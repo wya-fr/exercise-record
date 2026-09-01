@@ -303,48 +303,77 @@ createApp({
 
     // Email 密碼登入
     const handleEmailAuth = async () => {
-      if (!authForm.email || !authForm.password) {
-        alert('請填寫信箱與密碼！');
+      const email = (authForm.email || '').trim().toLowerCase();
+      const password = (authForm.password || '').trim();
+
+      if (!email || !password) {
+        alert('請填寫 Email 信箱與密碼！');
+        return;
+      }
+      if (!fbAuth) {
+        alert('Firebase 連線初始化中，請稍候重試或重新整理網頁！');
         return;
       }
       authLoading.value = true;
       try {
         if (authMode.value === 'login') {
-          await fbAuth.signInWithEmailAndPassword(authForm.email, authForm.password);
+          await fbAuth.signInWithEmailAndPassword(email, password);
           isAuthModalOpen.value = false;
+          notify('🎉 登入成功！已連線至您的雲端資料庫');
         } else {
-          const cred = await fbAuth.createUserWithEmailAndPassword(authForm.email, authForm.password);
+          const cred = await fbAuth.createUserWithEmailAndPassword(email, password);
           if (authForm.displayName && cred.user) {
-            await cred.user.updateProfile({ displayName: authForm.displayName });
+            await cred.user.updateProfile({ displayName: authForm.displayName.trim() });
           }
           isAuthModalOpen.value = false;
           notify('🎉 註冊成功！已為您建立專屬雲端健身空間！');
         }
       } catch (err) {
+        console.error('Email Auth Error:', err);
         let msg = err.message;
         if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-          msg = '帳號或密碼錯誤，請重新確認！';
+          msg = '帳號或密碼錯誤，請重新確認！若尚未註冊，請切換至「註冊新帳號」。';
         } else if (err.code === 'auth/email-already-in-use') {
-          msg = '此 Email 已經被註冊過囉！請直接登入。';
+          msg = '此 Email 已經被註冊過囉！請直接點選「登入帳號」。';
         } else if (err.code === 'auth/weak-password') {
-          msg = '密碼強度不足，請設定至少 6 碼！';
+          msg = '密碼強度不足，請設定至少 6 位字元！';
+        } else if (err.code === 'auth/invalid-email') {
+          msg = 'Email 格式不正確，請確認是否有空格或輸入錯誤！';
+        } else if (err.code === 'auth/operation-not-allowed') {
+          msg = 'Firebase 專案尚未開啟 Email 登入功能，請在 Firebase 控制台的 Authentication -> Sign-in method 中啟用 Email/Password 提供者！';
+        } else if (err.code === 'auth/network-request-failed') {
+          msg = '手機網路連線逾時，請檢查連線後重試！';
         }
-        alert('登入/註冊失敗：' + msg);
+        alert('登入提示：' + msg);
       } finally {
         authLoading.value = false;
       }
     };
 
-    // Google 一鍵登入
+    // Google 一鍵登入 (支援手機彈窗被阻擋時自動改用跳轉登入)
     const handleGoogleAuth = async () => {
+      if (!fbAuth) {
+        alert('Firebase 連線初始化中，請稍候重試！');
+        return;
+      }
       authLoading.value = true;
       try {
         const provider = new firebase.auth.GoogleAuthProvider();
         await fbAuth.signInWithPopup(provider);
         isAuthModalOpen.value = false;
+        notify('🎉 Google 登入成功！');
       } catch (err) {
         console.error('Google sign-in error:', err);
-        alert('Google 登入失敗：' + err.message);
+        if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
+          try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            await fbAuth.signInWithRedirect(provider);
+            return;
+          } catch (e) {
+            console.error('Redirect failed:', e);
+          }
+        }
+        alert('Google 登入提示：' + err.message);
       } finally {
         authLoading.value = false;
       }
