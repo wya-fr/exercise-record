@@ -876,6 +876,31 @@ createApp({
       });
     };
 
+    // 歷史上有運動記錄的所有日期清單（依日期降序排列）
+    const availableWorkoutDates = computed(() => {
+      const dateMap = {};
+      workouts.value.forEach((w) => {
+        if (!w.date) return;
+        if (!dateMap[w.date]) {
+          dateMap[w.date] = { date: w.date, count: 0, names: [] };
+        }
+        dateMap[w.date].count++;
+        if (dateMap[w.date].names.length < 2) {
+          dateMap[w.date].names.push(w.name);
+        }
+      });
+      return Object.values(dateMap).sort((a, b) => b.date.localeCompare(a.date));
+    });
+
+    // 取得指定日期前最近一次有運動記錄的日期
+    const getLastWorkoutDate = (targetDate) => {
+      const dates = availableWorkoutDates.value.filter((d) => d.date < targetDate);
+      if (dates.length > 0) return dates[0].date;
+      const otherDates = availableWorkoutDates.value.filter((d) => d.date !== targetDate);
+      if (otherDates.length > 0) return otherDates[0].date;
+      return null;
+    };
+
     // 複製來源日期的運動項目
     const copySourceWorkouts = computed(() => {
       return workouts.value.filter((w) => w.date === copySourceDate.value);
@@ -885,13 +910,22 @@ createApp({
     const openCopyModal = (targetDate) => {
       copyTargetDate.value = typeof targetDate === 'string' && targetDate ? targetDate : selectedDate.value;
       
-      // 預設來源日期為目標日期的前一天
+      // 1. 預設檢查昨天是否有記錄
       const d = new Date(copyTargetDate.value + 'T00:00:00');
       d.setDate(d.getDate() - 1);
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
-      copySourceDate.value = `${y}-${m}-${day}`;
+      const yesterdayStr = `${y}-${m}-${day}`;
+
+      const yesterdayHasWorkouts = workouts.value.some((w) => w.date === yesterdayStr);
+      if (yesterdayHasWorkouts) {
+        copySourceDate.value = yesterdayStr;
+      } else {
+        // 2. 昨天沒記錄，自動選取最近一次有運動記錄的日期
+        const lastDate = getLastWorkoutDate(copyTargetDate.value);
+        copySourceDate.value = lastDate || yesterdayStr;
+      }
 
       // 預設全選來源日期的項目
       selectedWorkoutIdsToCopy.value = workouts.value
@@ -902,6 +936,14 @@ createApp({
       nextTick(() => {
         if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
       });
+    };
+
+    // 點擊快捷歷史日期標籤
+    const selectSourceDate = (dateStr) => {
+      copySourceDate.value = dateStr;
+      selectedWorkoutIdsToCopy.value = workouts.value
+        .filter((w) => w.date === dateStr)
+        .map((w) => w.id);
     };
 
     // 切換來源日期時，自動全選該日期的動作
@@ -930,16 +972,21 @@ createApp({
       );
 
       const clonedList = [];
+      const currentNow = new Date();
+      const curHours = String(currentNow.getHours()).padStart(2, '0');
+      const curMins = String(currentNow.getMinutes()).padStart(2, '0');
+
       for (const item of itemsToClone) {
         const newId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
         const cloned = {
           ...JSON.parse(JSON.stringify(item)),
           id: newId,
           date: copyTargetDate.value,
+          time: item.time || `${curHours}:${curMins}`,
           updatedAt: new Date().toISOString(),
         };
         clonedList.push(cloned);
-        if (currentUser.value) {
+        if (currentUser.value && fbDb) {
           await syncWorkoutToFirestore(cloned);
         }
       }
@@ -948,7 +995,7 @@ createApp({
       selectedDate.value = copyTargetDate.value;
       saveLocalData();
       isCopyModalOpen.value = false;
-      notify(`📋 成功複製 ${clonedList.length} 筆運動項目到 ${formatDateDisplay(copyTargetDate.value)}！`);
+      notify(`📋 成功複製 ${clonedList.length} 筆運動課表到 ${formatDateDisplay(copyTargetDate.value)}！`);
       triggerConfetti();
       nextTick(() => {
         renderCharts();
@@ -956,41 +1003,60 @@ createApp({
       });
     };
 
-    // 一鍵快速複製前一日所有記錄
+    // 一鍵快速複製前一日或最近一次所有記錄
     const quickCopyPreviousDay = async () => {
+      // 1. 取得目標日期的前一日
       const d = new Date(selectedDate.value + 'T00:00:00');
       d.setDate(d.getDate() - 1);
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
-      const prevDateStr = `${y}-${m}-${day}`;
+      const yesterdayStr = `${y}-${m}-${day}`;
 
-      const prevWorkouts = workouts.value.filter((w) => w.date === prevDateStr);
-      if (prevWorkouts.length === 0) {
-        // 若昨天沒記錄，直接開啟彈窗讓使用者自選日期
-        openCopyModal(selectedDate.value);
-        notify(`前一天 (${formatDateDisplay(prevDateStr)}) 無記錄，已為您開啟日期選擇器`);
+      let sourceDate = yesterdayStr;
+      let sourceWorkouts = workouts.value.filter((w) => w.date === sourceDate);
+
+      // 2. 若昨天沒有任何記錄，智慧尋找「最近一次有記錄的日期」
+      if (sourceWorkouts.length === 0) {
+        const lastDate = getLastWorkoutDate(selectedDate.value);
+        if (lastDate) {
+          sourceDate = lastDate;
+          sourceWorkouts = workouts.value.filter((w) => w.date === sourceDate);
+        }
+      }
+
+      // 3. 若依然完全沒有任何歷史記錄，開啟示範資料或提示
+      if (sourceWorkouts.length === 0) {
+        if (confirm('目前資料庫中尚未有任何運動記錄可複製！是否要為您載入近期的示範運動課表？')) {
+          await loadSampleData();
+        }
         return;
       }
 
+      // 4. 複製該日所有項目
       const clonedList = [];
-      for (const item of prevWorkouts) {
+      const currentNow = new Date();
+      const curHours = String(currentNow.getHours()).padStart(2, '0');
+      const curMins = String(currentNow.getMinutes()).padStart(2, '0');
+
+      for (const item of sourceWorkouts) {
         const newId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
         const cloned = {
           ...JSON.parse(JSON.stringify(item)),
           id: newId,
           date: selectedDate.value,
+          time: item.time || `${curHours}:${curMins}`,
           updatedAt: new Date().toISOString(),
         };
         clonedList.push(cloned);
-        if (currentUser.value) {
+        if (currentUser.value && fbDb) {
           await syncWorkoutToFirestore(cloned);
         }
       }
 
       workouts.value = [...clonedList, ...workouts.value];
       saveLocalData();
-      notify(`📋 已成功複製前一天 (${formatDateDisplay(prevDateStr)}) 的 ${clonedList.length} 筆項目！`);
+      notify(`📋 已成功複製 ${formatDateDisplay(sourceDate)} 的 ${clonedList.length} 筆課表到今日！`);
       triggerConfetti();
       nextTick(() => {
         renderCharts();
@@ -1019,7 +1085,7 @@ createApp({
       };
 
       workouts.value.unshift(cloned);
-      if (currentUser.value) {
+      if (currentUser.value && fbDb) {
         await syncWorkoutToFirestore(cloned);
       }
       selectedDate.value = cleanDate;
@@ -1425,7 +1491,9 @@ createApp({
       copyTargetDate,
       selectedWorkoutIdsToCopy,
       copySourceWorkouts,
+      availableWorkoutDates,
       openCopyModal,
+      selectSourceDate,
       onCopySourceDateChange,
       toggleSelectAllCopy,
       confirmCopyWorkouts,

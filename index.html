@@ -47,9 +47,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <!-- Local Firebase Config -->
-  <script src="firebase-config.js?v=5.1"></script>
+  <script src="firebase-config.js?v=6.0"></script>
   
-  <link rel="stylesheet" href="styles.css?v=5.1">
+  <link rel="stylesheet" href="styles.css?v=6.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
 
@@ -1206,6 +1206,24 @@
               {{ selectedWorkoutIdsToCopy.length === copySourceWorkouts.length ? '取消全選' : '全部選取' }}
             </button>
           </div>
+
+          <!-- Quick Recent Workout Days Pills -->
+          <div v-if="availableWorkoutDates.length > 0" class="pt-1 space-y-1">
+            <span class="text-[11px] text-slate-400 font-medium">快速切換歷史有記錄的日期：</span>
+            <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              <button 
+                type="button"
+                v-for="d in availableWorkoutDates.slice(0, 8)" 
+                :key="d.date"
+                @click="selectSourceDate(d.date)"
+                :class="copySourceDate === d.date ? 'bg-indigo-600 text-white font-bold ring-2 ring-indigo-400/40 shadow-sm' : 'bg-slate-900/80 text-slate-300 border-slate-700/80 hover:bg-slate-800'"
+                class="px-2.5 py-1 rounded-xl text-xs border flex items-center gap-1.5 transition-all"
+              >
+                <span>{{ formatDateDisplay(d.date) }}</span>
+                <span class="text-[10px] px-1.5 py-0.2 bg-slate-800 rounded-full text-indigo-300 font-bold">{{ d.count }} 項</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Source Workouts List Preview -->
@@ -1289,6 +1307,6 @@
 
   </div>
 
-  <script src="app.js?v=5.1"></script>
+  <script src="app.js?v=6.0"></script>
 </body>
 </html>
