@@ -47,9 +47,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <!-- Local Firebase Config -->
-  <script src="firebase-config.js"></script>
+  <script src="firebase-config.js?v=5.0"></script>
   
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=5.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
 
@@ -232,6 +232,15 @@
 
         <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
           <button 
+            @click="openCopyModal(selectedDate)" 
+            class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            title="從其他天複製運動課表到此日"
+          >
+            <i data-lucide="copy" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span>複製課表...</span>
+          </button>
+
+          <button 
             v-if="selectedDate !== getTodayString()"
             @click="goToToday" 
             class="px-3 py-1.5 rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-colors"
@@ -309,13 +318,22 @@
           </div>
           <h3 class="text-lg font-bold text-slate-200 mb-1">今日尚無運動記錄</h3>
           <p class="text-sm text-slate-400 mb-5 max-w-sm">動一動身體，記錄下今天的揮汗成果！</p>
-          <button 
-            @click="openAddModal()" 
-            class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30 transition-transform active:scale-95"
-          >
-            <i data-lucide="plus" class="w-5 h-5"></i>
-            <span>立即記錄運動</span>
-          </button>
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            <button 
+              @click="openAddModal()" 
+              class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30 transition-transform active:scale-95"
+            >
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>立即記錄運動</span>
+            </button>
+            <button 
+              @click="quickCopyPreviousDay()" 
+              class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold transition-colors"
+            >
+              <i data-lucide="copy" class="w-4 h-4 text-indigo-400"></i>
+              <span>複製前一天記錄</span>
+            </button>
+          </div>
         </div>
 
         <!-- Workout Cards -->
@@ -343,6 +361,13 @@
               </span>
 
               <div class="flex items-center gap-1">
+                <button 
+                  @click="copySingleWorkout(workout)" 
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+                  title="複製此運動到其他天"
+                >
+                  <i data-lucide="copy" class="w-4 h-4"></i>
+                </button>
                 <button 
                   @click="openEditModal(workout)" 
                   class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
@@ -1127,6 +1152,127 @@
       </div>
     </div>
 
+    <!-- ==================== 複製課表彈窗 (COPY WORKOUTS MODAL) ==================== -->
+    <div 
+      v-if="isCopyModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+      @click.self="isCopyModalOpen = false"
+    >
+      <div class="glass-card w-full max-w-lg rounded-3xl p-6 border border-slate-700/80 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+              <i data-lucide="copy" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">複製運動記錄</h3>
+              <p class="text-xs text-slate-400">複製課表到 <span class="text-indigo-400 font-semibold">{{ formatDateDisplay(copyTargetDate) }}</span></p>
+            </div>
+          </div>
+          <button 
+            @click="isCopyModalOpen = false" 
+            class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Source Date Selector -->
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+            <span>選擇來源日期：</span>
+            <span class="text-[11px] text-slate-400">{{ formatDateDisplay(copySourceDate) }}</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <input 
+              type="date" 
+              v-model="copySourceDate" 
+              @change="onCopySourceDateChange"
+              class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+            <button 
+              type="button" 
+              @click="toggleSelectAllCopy"
+              v-if="copySourceWorkouts.length > 0"
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 font-medium shrink-0 transition-colors"
+            >
+              {{ selectedWorkoutIdsToCopy.length === copySourceWorkouts.length ? '取消全選' : '全部選取' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Source Workouts List Preview -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400">
+              該日運動項目 ({{ copySourceWorkouts.length }} 項，已勾選 {{ selectedWorkoutIdsToCopy.length }} 項)：
+            </span>
+          </div>
+
+          <!-- Empty source workouts -->
+          <div v-if="copySourceWorkouts.length === 0" class="p-6 rounded-2xl bg-slate-900/60 border border-dashed border-slate-800 text-center space-y-2">
+            <i data-lucide="calendar-x" class="w-6 h-6 text-slate-500 mx-auto"></i>
+            <p class="text-xs text-slate-400">所選的來源日期（{{ copySourceDate }}）沒有任何運動記錄</p>
+            <p class="text-[11px] text-slate-500">請在上方更換為有記錄的日期</p>
+          </div>
+
+          <!-- List of items to check -->
+          <div v-else class="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <label 
+              v-for="item in copySourceWorkouts" 
+              :key="item.id"
+              :class="selectedWorkoutIdsToCopy.includes(item.id) ? 'bg-indigo-950/40 border-indigo-500/50' : 'bg-slate-900/60 border-slate-800/80 opacity-70'"
+              class="flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer hover:border-slate-700"
+            >
+              <div class="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  :value="item.id" 
+                  v-model="selectedWorkoutIdsToCopy"
+                  class="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                >
+                <div>
+                  <div class="text-sm font-bold text-white flex items-center gap-2">
+                    <span>{{ item.name }}</span>
+                    <span :class="getCategoryInfo(item.category).badgeClass" class="text-[10px] px-1.5 py-0.5 rounded">
+                      {{ getCategoryInfo(item.category).name }}
+                    </span>
+                  </div>
+                  <div class="text-xs text-slate-400">
+                    <span v-if="item.category === 'strength' && item.sets">{{ item.sets.length }} 組訓練</span>
+                    <span v-else>{{ item.duration }} 分鐘 <span v-if="item.distance">· {{ item.distance }} km</span></span>
+                  </div>
+                </div>
+              </div>
+              <span class="text-xs text-slate-400">{{ item.time || '' }}</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+          <button 
+            type="button" 
+            @click="isCopyModalOpen = false" 
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+          >
+            取消
+          </button>
+          <button 
+            type="button" 
+            @click="confirmCopyWorkouts"
+            :disabled="selectedWorkoutIdsToCopy.length === 0"
+            :class="selectedWorkoutIdsToCopy.length === 0 ? 'opacity-50 cursor-not-allowed bg-slate-700 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 active:scale-95'"
+            class="px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+          >
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>確認複製 ({{ selectedWorkoutIdsToCopy.length }} 項)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div 
       v-if="showToast" 
@@ -1137,6 +1283,6 @@
 
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=5.0"></script>
 </body>
 </html>
