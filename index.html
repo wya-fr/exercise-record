@@ -46,10 +46,26 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- App Icons & PWA Metadata -->
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FitTrack">
+  <meta name="theme-color" content="#020617">
+
+  <!-- Open Graph / Social Media Preview -->
+  <meta property="og:title" content="FitTrack Daily - 每日健身運動記錄">
+  <meta property="og:description" content="專業健身訓練、重訓組數與每日運動記錄應用">
+  <meta property="og:image" content="app-cover.jpg">
+  <meta property="og:type" content="website">
+
   <!-- Local Firebase Config -->
-  <script src="firebase-config.js?v=7.0"></script>
+  <script src="firebase-config.js?v=8.0"></script>
   
-  <link rel="stylesheet" href="styles.css?v=7.0">
+  <link rel="stylesheet" href="styles.css?v=8.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
 
@@ -59,9 +75,11 @@
     <header class="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-800/80 mb-6">
       <div class="flex items-center gap-3 w-full sm:w-auto justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <i data-lucide="dumbbell" class="w-6 h-6 text-white"></i>
-          </div>
+          <img 
+            src="icon-192.png" 
+            alt="FitTrack Logo" 
+            class="w-11 h-11 rounded-2xl object-cover shadow-lg shadow-indigo-950 ring-1 ring-slate-700/60"
+          >
           <div>
             <h1 class="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
               FitTrack <span class="text-indigo-400 font-semibold text-lg">Daily</span>
@@ -1315,6 +1333,6 @@
 
   </div>
 
-  <script src="app.js?v=7.0"></script>
+  <script src="app.js?v=8.0"></script>
 </body>
 </html>
