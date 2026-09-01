@@ -350,7 +350,7 @@ createApp({
       }
     };
 
-    // Google 一鍵登入 (支援手機彈窗被阻擋時自動改用跳轉登入)
+    // Google 一鍵登入
     const handleGoogleAuth = async () => {
       if (!fbAuth) {
         alert('Firebase 連線初始化中，請稍候重試！');
@@ -364,16 +364,13 @@ createApp({
         notify('🎉 Google 登入成功！');
       } catch (err) {
         console.error('Google sign-in error:', err);
-        if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
-          try {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            await fbAuth.signInWithRedirect(provider);
-            return;
-          } catch (e) {
-            console.error('Redirect failed:', e);
-          }
+        if (err.code === 'auth/popup-blocked') {
+          alert('手機瀏覽器阻擋了 Google 彈出視窗。請允許彈出視窗，或直接在下方使用 Email/密碼 登入/註冊！');
+        } else if (err.code === 'auth/popup-closed-by-user') {
+          // 使用者自行關閉視窗，不顯示報錯
+        } else {
+          alert('Google 登入提示：' + err.message);
         }
-        alert('Google 登入提示：' + err.message);
       } finally {
         authLoading.value = false;
       }
