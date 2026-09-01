@@ -19,9 +19,11 @@ const CATEGORIES = [
 
 const PRESET_EXERCISES = {
   strength: [
+    { name: '伏地挺身 (Push-ups)', target: '胸部 / 核心' },
     { name: '深蹲 (Squat)', target: '下肢' },
     { name: '臥推 (Bench Press)', target: '胸部' },
     { name: '硬舉 (Deadlift)', target: '背部 / 臀腿' },
+    { name: '仰臥起坐 (Sit-ups)', target: '核心 / 腹部' },
     { name: '啞鈴肩推 (Shoulder Press)', target: '肩部' },
     { name: '槓鈴划船 (Barbell Row)', target: '背部' },
     { name: '引體向上 (Pull-up)', target: '背部' },
@@ -35,6 +37,7 @@ const PRESET_EXERCISES = {
     { name: '腿部彎舉 (Leg Curl)', target: '後腿' },
   ],
   cardio: [
+    { name: '超慢跑 (Slow Jogging)', met: 6.0 },
     { name: '戶外慢跑 (Running)', met: 9.0 },
     { name: '跑步機 (Treadmill)', met: 8.5 },
     { name: '戶外騎行 (Cycling)', met: 7.5 },
@@ -48,6 +51,8 @@ const PRESET_EXERCISES = {
   ],
   hiit: [
     { name: '棒式支撐 (Plank)' },
+    { name: '仰臥起坐 (Sit-ups)' },
+    { name: '伏地挺身 (Push-ups)' },
     { name: '波比跳 (Burpees)' },
     { name: '開合跳 (Jumping Jacks)' },
     { name: '登山者 (Mountain Climbers)' },
