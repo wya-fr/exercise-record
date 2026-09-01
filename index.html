@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FitTrack Daily - 每日運動記錄 (雲端多使用者版)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            dark: {
+              800: '#1e293b',
+              850: '#172033',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <!-- Firebase App & Services (Compat CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- Local Firebase Config -->
+  <script src="firebase-config.js"></script>
+  
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
+
+  <div id="app" v-cloak class="max-w-5xl mx-auto px-4 py-6 md:py-8">
+    
+    <!-- Top Navigation Bar -->
+    <header class="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-800/80 mb-6">
+      <div class="flex items-center gap-3 w-full sm:w-auto justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <i data-lucide="dumbbell" class="w-6 h-6 text-white"></i>
+          </div>
+          <div>
+            <h1 class="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              FitTrack <span class="text-indigo-400 font-semibold text-lg">Daily</span>
+            </h1>
+            <p class="text-xs text-slate-400 font-medium">記錄每一滴汗水，見證每天的進步</p>
+          </div>
+        </div>
+
+        <!-- Streak Badge -->
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-400 text-xs md:text-sm font-bold shadow-inner">
+          <i data-lucide="flame" class="w-4 h-4 text-orange-400 fill-orange-400 animate-pulse"></i>
+          <span>連續打卡 <span class="text-white text-base">{{ currentStreak }}</span> 天</span>
+        </div>
+      </div>
+
+      <!-- Right Action & User Profile Section -->
+      <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+        
+        <!-- User Status Badge / Login Button -->
+        <div v-if="currentUser" class="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-md">
+          <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden">
+            <img v-if="currentUser.photoURL" :src="currentUser.photoURL" class="w-full h-full object-cover">
+            <span v-else>{{ currentUser.displayName.charAt(0).toUpperCase() }}</span>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-xs font-bold text-slate-200 max-w-[90px] md:max-w-[120px] truncate leading-tight">
+              {{ currentUser.displayName }}
+            </span>
+            <span class="text-[10px] text-emerald-400 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              雲端同步中
+            </span>
+          </div>
+          <button 
+            @click="handleLogout" 
+            title="登出帳號"
+            class="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors ml-1"
+          >
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <button 
+          v-else
+          @click="isAuthModalOpen = true"
+          class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold shadow-sm transition-all"
+        >
+          <i data-lucide="user" class="w-4 h-4"></i>
+          <span>登入 / 註冊</span>
+        </button>
+
+        <!-- Record Workout Button -->
+        <button 
+          @click="openAddModal()" 
+          class="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-xs md:text-sm shadow-lg shadow-indigo-600/25 transition-all transform active:scale-95"
+        >
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <span>記錄運動</span>
+        </button>
+
+        <!-- Tool Buttons -->
+        <button 
+          @click="loadSampleData" 
+          title="載入示範資料"
+          class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors"
+        >
+          <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+        </button>
+
+        <button 
+          @click="exportDataJSON" 
+          title="備份匯出 JSON"
+          class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors"
+        >
+          <i data-lucide="download" class="w-4 h-4"></i>
+        </button>
+
+        <label 
+          title="匯入 JSON 備份"
+          class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer"
+        >
+          <i data-lucide="upload" class="w-4 h-4"></i>
+          <input type="file" accept=".json" @change="importDataJSON" class="hidden">
+        </label>
+
+        <button 
+          @click="isConfigModalOpen = true" 
+          title="Firebase 雲端設定"
+          class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-indigo-300 border border-slate-700/60 transition-colors"
+        >
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tab Bar -->
+    <nav class="flex items-center gap-1.5 p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl mb-6 overflow-x-auto shadow-inner">
+      <button 
+        @click="switchTab('daily')" 
+        :class="currentTab === 'daily' ? 'bg-indigo-600 text-white font-semibold shadow-md shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+        class="flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-sm transition-all"
+      >
+        <i data-lucide="calendar-check" class="w-4 h-4"></i>
+        <span>每日記錄</span>
+      </button>
+
+      <button 
+        @click="switchTab('calendar')" 
+        :class="currentTab === 'calendar' ? 'bg-indigo-600 text-white font-semibold shadow-md shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+        class="flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-sm transition-all"
+      >
+        <i data-lucide="calendar" class="w-4 h-4"></i>
+        <span>運動月曆</span>
+      </button>
+
+      <button 
+        @click="switchTab('analytics')" 
+        :class="currentTab === 'analytics' ? 'bg-indigo-600 text-white font-semibold shadow-md shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+        class="flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-sm transition-all"
+      >
+        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+        <span>數據分析</span>
+      </button>
+
+      <button 
+        @click="switchTab('history')" 
+        :class="currentTab === 'history' ? 'bg-indigo-600 text-white font-semibold shadow-md shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+        class="flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-sm transition-all"
+      >
+        <i data-lucide="clock" class="w-4 h-4"></i>
+        <span>歷史搜尋</span>
+      </button>
+    </nav>
+
+    <!-- ==================== TAB 1: 每日記錄 (DAILY) ==================== -->
+    <main v-if="currentTab === 'daily'" class="space-y-6 animate-fade-in">
+      
+      <!-- Date Switcher Header -->
+      <div class="glass-card rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-between">
+          <button 
+            @click="changeDate(-1)" 
+            class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            title="前一天"
+          >
+            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+          </button>
+          
+          <div class="flex items-center gap-3">
+            <input 
+              type="date" 
+              v-model="selectedDate" 
+              class="bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-1.5 text-sm md:text-base font-semibold text-white focus:outline-none focus:border-indigo-500"
+            >
+            <span class="text-sm font-medium text-slate-400 hidden md:inline">
+              {{ formatDateDisplay(selectedDate) }}
+            </span>
+          </div>
+
+          <button 
+            @click="changeDate(1)" 
+            class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            title="後一天"
+          >
+            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button 
+            v-if="selectedDate !== getTodayString()"
+            @click="goToToday" 
+            class="px-3 py-1.5 rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-colors"
+          >
+            回到今天
+          </button>
+          <span class="text-xs text-slate-400">
+            共 {{ dailyWorkouts.length }} 筆項目
+          </span>
+        </div>
+      </div>
+
+      <!-- Daily Summary Stat Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div class="glass-card rounded-2xl p-4 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <i data-lucide="activity" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 font-medium">運動項目</div>
+            <div class="text-xl md:text-2xl font-bold text-white">{{ dailyStats.count }} <span class="text-xs font-normal text-slate-400">項</span></div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-4 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <i data-lucide="clock-3" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 font-medium">總訓練時長</div>
+            <div class="text-xl md:text-2xl font-bold text-white">{{ dailyStats.duration }} <span class="text-xs font-normal text-slate-400">分鐘</span></div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-4 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+            <i data-lucide="flame" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 font-medium">預估消耗熱量</div>
+            <div class="text-xl md:text-2xl font-bold text-white">{{ dailyStats.calories }} <span class="text-xs font-normal text-slate-400">kcal</span></div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-4 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 font-medium">重訓總容量 / 組數</div>
+            <div class="text-xl md:text-2xl font-bold text-white">{{ dailyStats.volume }} <span class="text-xs font-normal text-slate-400">kg / {{ dailyStats.sets }}組</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Add Category Pills -->
+      <div class="flex items-center gap-2 overflow-x-auto pb-1">
+        <span class="text-xs text-slate-400 font-medium whitespace-nowrap pl-1">快速新增：</span>
+        <button 
+          v-for="cat in CATEGORIES" 
+          :key="cat.id"
+          @click="openAddModal(cat.id)"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 whitespace-nowrap transition-colors"
+        >
+          <span class="w-2 h-2 rounded-full" :class="'bg-' + cat.color + '-400'"></span>
+          <span>+ {{ cat.name }}</span>
+        </button>
+      </div>
+
+      <!-- Today Workout Item List -->
+      <div class="space-y-4">
+        <div v-if="dailyWorkouts.length === 0" class="glass-card rounded-2xl p-10 text-center flex flex-col items-center justify-center">
+          <div class="w-16 h-16 rounded-full bg-slate-800/90 flex items-center justify-center mb-4 text-slate-500">
+            <i data-lucide="calendar-x-2" class="w-8 h-8"></i>
+          </div>
+          <h3 class="text-lg font-bold text-slate-200 mb-1">今日尚無運動記錄</h3>
+          <p class="text-sm text-slate-400 mb-5 max-w-sm">動一動身體，記錄下今天的揮汗成果！</p>
+          <button 
+            @click="openAddModal()" 
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30 transition-transform active:scale-95"
+          >
+            <i data-lucide="plus" class="w-5 h-5"></i>
+            <span>立即記錄運動</span>
+          </button>
+        </div>
+
+        <!-- Workout Cards -->
+        <div 
+          v-for="workout in dailyWorkouts" 
+          :key="workout.id" 
+          class="glass-card rounded-2xl p-5 border border-slate-800 hover:border-slate-700/80 transition-all"
+        >
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/60">
+            <div class="flex items-center gap-3">
+              <span :class="getCategoryInfo(workout.category).badgeClass" class="px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                <i :data-lucide="getCategoryInfo(workout.category).icon" class="w-3.5 h-3.5"></i>
+                {{ getCategoryInfo(workout.category).name }}
+              </span>
+              <h4 class="text-lg font-bold text-white">{{ workout.name }}</h4>
+              <span v-if="workout.targetMuscle" class="text-xs px-2 py-0.5 rounded-md bg-slate-800 text-indigo-300 border border-slate-700">
+                {{ workout.targetMuscle }}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2 justify-between sm:justify-end">
+              <span class="text-xs text-slate-400 flex items-center gap-1">
+                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                {{ workout.time || '未指定時間' }}
+              </span>
+
+              <div class="flex items-center gap-1">
+                <button 
+                  @click="openEditModal(workout)" 
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+                  title="編輯"
+                >
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                </button>
+                <button 
+                  @click="deleteWorkout(workout.id)" 
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                  title="刪除"
+                >
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card Content Body -->
+          <div class="pt-3">
+            <!-- Strength Sets Table -->
+            <div v-if="workout.category === 'strength' && workout.sets && workout.sets.length" class="space-y-2">
+              <div class="grid grid-cols-4 sm:grid-cols-5 text-xs text-slate-400 font-semibold px-3 py-1 bg-slate-900/60 rounded-lg">
+                <span>組別</span>
+                <span>重量 (kg)</span>
+                <span>次數 (reps)</span>
+                <span class="hidden sm:inline">單組容量</span>
+                <span class="text-right">狀態</span>
+              </div>
+              
+              <div 
+                v-for="(set, idx) in workout.sets" 
+                :key="idx"
+                class="grid grid-cols-4 sm:grid-cols-5 text-sm px-3 py-2 rounded-lg bg-slate-800/40 hover:bg-slate-800/80 items-center border border-slate-800/50"
+              >
+                <span class="font-bold text-indigo-400 flex items-center gap-1.5">
+                  <span class="w-5 h-5 rounded-full bg-indigo-500/20 text-xs flex items-center justify-center font-bold">{{ idx + 1 }}</span>
+                  <span v-if="set.isWarmup" class="text-[10px] text-amber-400 font-normal">[暖身]</span>
+                </span>
+                <span class="font-semibold text-white">{{ set.weight }} kg</span>
+                <span class="text-slate-200">{{ set.reps }} 下</span>
+                <span class="text-slate-400 hidden sm:inline text-xs">{{ set.weight * set.reps }} kg</span>
+                <span class="text-right">
+                  <span v-if="set.completed" class="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold">
+                    <i data-lucide="check-circle-2" class="w-4 h-4"></i> 完成
+                  </span>
+                  <span v-else class="text-slate-500 text-xs">未完成</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Cardio / HIIT / Stretch Summary Metrics -->
+            <div v-else class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-2.5">
+                <i data-lucide="timer" class="w-4 h-4 text-emerald-400"></i>
+                <div>
+                  <div class="text-[11px] text-slate-400">時長</div>
+                  <div class="text-sm font-bold text-white">{{ workout.duration }} 分鐘</div>
+                </div>
+              </div>
+
+              <div v-if="workout.distance" class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-2.5">
+                <i data-lucide="map-pin" class="w-4 h-4 text-cyan-400"></i>
+                <div>
+                  <div class="text-[11px] text-slate-400">距離</div>
+                  <div class="text-sm font-bold text-white">{{ workout.distance }} km</div>
+                </div>
+              </div>
+
+              <div v-if="workout.calories" class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-2.5">
+                <i data-lucide="flame" class="w-4 h-4 text-rose-400"></i>
+                <div>
+                  <div class="text-[11px] text-slate-400">消耗熱量</div>
+                  <div class="text-sm font-bold text-white">{{ workout.calories }} kcal</div>
+                </div>
+              </div>
+
+              <div v-if="workout.heartRate" class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-2.5">
+                <i data-lucide="heart" class="w-4 h-4 text-pink-400"></i>
+                <div>
+                  <div class="text-[11px] text-slate-400">平均心率</div>
+                  <div class="text-sm font-bold text-white">{{ workout.heartRate }} bpm</div>
+                </div>
+              </div>
+
+              <div v-if="workout.intensity" class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center gap-2.5">
+                <i data-lucide="gauge" class="w-4 h-4 text-amber-400"></i>
+                <div>
+                  <div class="text-[11px] text-slate-400">自覺強度 (RPE)</div>
+                  <div class="text-sm font-bold text-white">{{ workout.intensity }} / 10</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Notes Section -->
+            <div v-if="workout.notes" class="mt-3 text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800/60 flex items-start gap-2">
+              <i data-lucide="file-text" class="w-4 h-4 text-indigo-400 shrink-0 mt-0.5"></i>
+              <span class="leading-relaxed">{{ workout.notes }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== TAB 2: 運動月曆 (CALENDAR) ==================== -->
+    <main v-if="currentTab === 'calendar'" class="space-y-6 animate-fade-in">
+      <div class="glass-card rounded-2xl p-5 md:p-6">
+        <!-- Calendar Header -->
+        <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <i data-lucide="calendar" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h2 class="text-lg md:text-xl font-bold text-white">
+                {{ calendarMonth.getFullYear() }} 年 {{ calendarMonth.getMonth() + 1 }} 月
+              </h2>
+              <p class="text-xs text-slate-400">點擊任意日期可直接查看或記錄當天運動</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button 
+              @click="changeCalendarMonth(-1)" 
+              class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            >
+              <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <button 
+              @click="goToToday" 
+              class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-indigo-300 border border-indigo-500/30 transition-colors"
+            >
+              本月
+            </button>
+            <button 
+              @click="changeCalendarMonth(1)" 
+              class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            >
+              <i data-lucide="chevron-right" class="w-5 h-5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Weekday Labels -->
+        <div class="grid grid-cols-7 gap-2 mb-3 text-center text-xs font-bold text-slate-400">
+          <span>週一</span>
+          <span>週二</span>
+          <span>週三</span>
+          <span>週四</span>
+          <span>週五</span>
+          <span class="text-indigo-400">週六</span>
+          <span class="text-rose-400">週日</span>
+        </div>
+
+        <!-- Calendar Days Grid -->
+        <div class="grid grid-cols-7 gap-2">
+          <div 
+            v-for="(day, idx) in calendarDays" 
+            :key="idx"
+            @click="selectCalendarDate(day)"
+            :class="[
+              'calendar-day-cell p-1.5 md:p-2 border',
+              day.isCurrentMonth ? 'text-slate-100 bg-slate-900/60 border-slate-800/80' : 'text-slate-600 bg-slate-950/40 border-slate-900/40 opacity-40',
+              day.date === selectedDate ? 'active-day !border-indigo-400' : '',
+              day.isToday && day.date !== selectedDate ? 'today' : '',
+            ]"
+          >
+            <div class="text-xs md:text-sm font-semibold mb-1">
+              {{ day.dayNumber }}
+            </div>
+
+            <!-- Workout Indicator Badges -->
+            <div v-if="day.hasWorkout" class="flex flex-wrap justify-center gap-1 mt-auto">
+              <span class="px-1.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-300 text-[10px] font-bold border border-indigo-500/40">
+                {{ day.workoutCount }} 項
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== TAB 3: 數據分析 (ANALYTICS) ==================== -->
+    <main v-if="currentTab === 'analytics'" class="space-y-6 animate-fade-in">
+      
+      <!-- Weekly Goals & Progress -->
+      <div class="glass-card rounded-2xl p-5 md:p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <i data-lucide="target" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-white">本週目標達成率</h2>
+              <p class="text-xs text-slate-400">持續保持好習慣，一步步達成每週鍛鍊目標</p>
+            </div>
+          </div>
+          <button 
+            @click="exportDataCSV" 
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
+          >
+            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
+            <span>匯出 CSV 報表</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <!-- Target 1: Workout Days -->
+          <div class="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-300 font-medium">每週運動天數</span>
+              <span class="font-bold text-indigo-400">{{ thisWeekStats.daysCount }} / {{ thisWeekStats.targetDays }} 天 ({{ thisWeekStats.daysProgress }}%)</span>
+            </div>
+            <div class="w-full h-3 rounded-full bg-slate-800 overflow-hidden">
+              <div 
+                class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                :style="{ width: thisWeekStats.daysProgress + '%' }"
+              ></div>
+            </div>
+          </div>
+
+          <!-- Target 2: Duration Minutes -->
+          <div class="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-300 font-medium">每週訓練總時長</span>
+              <span class="font-bold text-emerald-400">{{ thisWeekStats.weekDuration }} / {{ thisWeekStats.targetMins }} 分鐘 ({{ thisWeekStats.minsProgress }}%)</span>
+            </div>
+            <div class="w-full h-3 rounded-full bg-slate-800 overflow-hidden">
+              <div 
+                class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                :style="{ width: thisWeekStats.minsProgress + '%' }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Category Doughnut Chart -->
+        <div class="glass-card rounded-2xl p-5 md:p-6 lg:col-span-1 flex flex-col">
+          <h3 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+            <i data-lucide="pie-chart" class="w-4 h-4 text-indigo-400"></i>
+            運動項目分佈比例
+          </h3>
+          <p class="text-xs text-slate-400 mb-4">各類別訓練時長累積佔比</p>
+          <div class="relative flex-1 min-h-[260px] flex items-center justify-center">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 7-Day Activity & Calorie Bar/Line Chart -->
+        <div class="glass-card rounded-2xl p-5 md:p-6 lg:col-span-2 flex flex-col">
+          <h3 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+            近 7 天訓練時長與卡路里趨勢
+          </h3>
+          <p class="text-xs text-slate-400 mb-4">每日訓練時間 (長條) 與消耗熱量 (折線)</p>
+          <div class="relative flex-1 min-h-[260px]">
+            <canvas id="weeklyTrendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ==================== TAB 4: 歷史搜尋 (HISTORY) ==================== -->
+    <main v-if="currentTab === 'history'" class="space-y-6 animate-fade-in">
+      <!-- Search & Filters -->
+      <div class="glass-card rounded-2xl p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row items-center gap-3">
+          <div class="relative flex-1 w-full">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+            <input 
+              type="text" 
+              v-model="historyFilter.keyword"
+              placeholder="搜尋動作名稱、部位、備註..."
+              class="w-full bg-slate-900/80 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <select 
+              v-model="historyFilter.category" 
+              class="bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">所有運動分類</option>
+              <option v-for="cat in CATEGORIES" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-xs text-slate-400 pt-1">
+          <span>找到 {{ filteredHistoryWorkouts.length }} 筆歷史記錄</span>
+          <button 
+            v-if="historyFilter.keyword || historyFilter.category !== 'all'"
+            @click="historyFilter.keyword = ''; historyFilter.category = 'all'"
+            class="text-indigo-400 hover:underline"
+          >
+            重設篩選條件
+          </button>
+        </div>
+      </div>
+
+      <!-- History Record List -->
+      <div class="space-y-3">
+        <div 
+          v-for="workout in filteredHistoryWorkouts" 
+          :key="workout.id"
+          class="glass-card rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-all"
+        >
+          <div class="flex items-start sm:items-center gap-3">
+            <div class="text-center min-w-[50px] p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div class="text-xs text-slate-400 font-medium">{{ workout.date.split('-')[1] }}月</div>
+              <div class="text-base font-bold text-white">{{ workout.date.split('-')[2] }}</div>
+            </div>
+
+            <div>
+              <div class="flex items-center gap-2">
+                <span :class="getCategoryInfo(workout.category).badgeClass" class="px-2 py-0.5 rounded text-[11px] font-semibold">
+                  {{ getCategoryInfo(workout.category).name }}
+                </span>
+                <h4 class="text-base font-bold text-white">{{ workout.name }}</h4>
+              </div>
+              <div class="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-3">
+                <span v-if="workout.duration">時長：{{ workout.duration }} 分鐘</span>
+                <span v-if="workout.calories">消耗：{{ workout.calories }} kcal</span>
+                <span v-if="workout.category === 'strength' && workout.sets">組數：{{ workout.sets.length }} 組</span>
+                <span v-if="workout.notes" class="text-slate-500 italic max-w-xs truncate">{{ workout.notes }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 self-end sm:self-center">
+            <button 
+              @click="openEditModal(workout)" 
+              class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+              title="編輯"
+            >
+              <i data-lucide="edit-3" class="w-4 h-4"></i>
+            </button>
+            <button 
+              @click="deleteWorkout(workout.id)" 
+              class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-rose-400 transition-colors"
+              title="刪除"
+            >
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== MODAL: 新增 / 編輯運動記錄 ==================== -->
+    <div 
+      v-if="isModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
+    >
+      <div class="glass-modal w-full max-w-2xl rounded-3xl p-6 md:p-8 space-y-6 my-8 animate-fade-in shadow-2xl">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+              <i :data-lucide="isEditing ? 'edit-3' : 'plus-circle'" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-xl font-bold text-white">
+                {{ isEditing ? '編輯運動記錄' : '新增運動記錄' }}
+              </h3>
+              <p class="text-xs text-slate-400">填寫訓練詳細數據，累積健康實力</p>
+            </div>
+          </div>
+
+          <button 
+            @click="isModalOpen = false" 
+            class="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Form Category Selector Tabs -->
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-slate-300">選擇運動類型</label>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <button 
+              type="button"
+              v-for="cat in CATEGORIES" 
+              :key="cat.id"
+              @click="onCategoryChange(cat.id)"
+              :class="form.category === cat.id ? 'bg-indigo-600 text-white font-bold ring-2 ring-indigo-400/40 shadow-md' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'"
+              class="flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs transition-all gap-1"
+            >
+              <i :data-lucide="cat.icon" class="w-4 h-4"></i>
+              <span>{{ cat.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Preset Suggestions Quick Tags -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-400">常用動作快捷選擇：</label>
+          <div class="flex flex-wrap gap-1.5">
+            <button 
+              type="button"
+              v-for="preset in currentCategoryPresets" 
+              :key="preset.name"
+              @click="selectPresetExercise(preset)"
+              :class="form.name === preset.name ? 'bg-indigo-500/30 text-indigo-300 border-indigo-500' : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:border-slate-700'"
+              class="px-2.5 py-1 rounded-lg text-xs border transition-colors"
+            >
+              {{ preset.name }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Exercise Name & Target Muscle -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">運動項目名稱 <span class="text-rose-400">*</span></label>
+            <input 
+              type="text" 
+              v-model="form.name" 
+              placeholder="例如：深蹲 (Squat) 或慢跑"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">目標肌群 / 細部類型</label>
+            <input 
+              type="text" 
+              v-model="form.targetMuscle" 
+              placeholder="例如：腿部、胸大肌、心肺..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+        </div>
+
+        <!-- Date & Time Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">記錄日期</label>
+            <input 
+              type="date" 
+              v-model="form.date" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">記錄時間</label>
+            <input 
+              type="time" 
+              v-model="form.time" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+        </div>
+
+        <!-- Dynamic Section 1: STRENGTH DETAIL -->
+        <div v-if="form.category === 'strength'" class="space-y-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-bold text-white">重訓組數列表</span>
+              <span class="text-xs text-indigo-400 font-medium">總容量：{{ formTotalVolume }} kg</span>
+              <span v-if="estimated1RM > 0" class="text-xs text-emerald-400 font-medium ml-2">預估 1RM：{{ estimated1RM }} kg</span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <button 
+                type="button"
+                @click="copyLastSet" 
+                class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors"
+                title="複製最後一組"
+              >
+                + 複製上一組
+              </button>
+              <button 
+                type="button"
+                @click="addSet" 
+                class="px-2.5 py-1 rounded-lg bg-indigo-600/40 hover:bg-indigo-600/70 text-indigo-300 text-xs font-semibold border border-indigo-500/40 transition-colors"
+              >
+                + 新增一組
+              </button>
+            </div>
+          </div>
+
+          <!-- Sets Table Editor -->
+          <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div 
+              v-for="(set, idx) in form.sets" 
+              :key="idx"
+              class="flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700/60"
+            >
+              <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0">
+                #{{ idx + 1 }}
+              </span>
+
+              <div class="flex items-center gap-1.5 flex-1">
+                <input 
+                  type="number" 
+                  step="0.5"
+                  v-model.number="set.weight" 
+                  placeholder="重量"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-center text-white focus:outline-none focus:border-indigo-500 font-bold"
+                >
+                <span class="text-xs text-slate-400">kg</span>
+              </div>
+
+              <span class="text-slate-500">×</span>
+
+              <div class="flex items-center gap-1.5 flex-1">
+                <input 
+                  type="number" 
+                  v-model.number="set.reps" 
+                  placeholder="次數"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-center text-white focus:outline-none focus:border-indigo-500 font-bold"
+                >
+                <span class="text-xs text-slate-400">下</span>
+              </div>
+
+              <label class="flex items-center gap-1 text-xs text-slate-300 cursor-pointer px-1.5">
+                <input type="checkbox" v-model="set.completed" class="rounded accent-indigo-600">
+                <span>完成</span>
+              </label>
+
+              <button 
+                type="button"
+                v-if="form.sets.length > 1"
+                @click="removeSet(idx)"
+                class="p-1 rounded-lg text-slate-500 hover:text-rose-400 transition-colors"
+                title="移除此組"
+              >
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic Section 2: CARDIO / HIIT / STRETCH METRICS -->
+        <div v-else class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">運動時長 (分鐘) <span class="text-rose-400">*</span></label>
+            <input 
+              type="number" 
+              v-model.number="form.duration" 
+              @input="calculateEstimatedCalories"
+              placeholder="30"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-bold"
+            >
+          </div>
+
+          <div v-if="form.category === 'cardio'" class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">運動距離 (公里)</label>
+            <input 
+              type="number" 
+              step="0.1"
+              v-model.number="form.distance" 
+              placeholder="5.0"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">預估消耗熱量 (kcal)</label>
+            <input 
+              type="number" 
+              v-model.number="form.calories" 
+              placeholder="自動計算"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-bold text-rose-400"
+            >
+          </div>
+
+          <div v-if="form.category === 'cardio'" class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">平均心率 (bpm)</label>
+            <input 
+              type="number" 
+              v-model.number="form.heartRate" 
+              placeholder="135"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div v-if="form.category !== 'cardio'" class="space-y-1.5 sm:col-span-2">
+            <div class="flex justify-between text-xs font-semibold text-slate-300">
+              <span>自覺運動強度 (RPE)</span>
+              <span class="text-indigo-400 font-bold">{{ form.intensity }} / 10</span>
+            </div>
+            <input 
+              type="range" 
+              min="1" 
+              max="10" 
+              v-model.number="form.intensity" 
+              class="w-full accent-indigo-500 cursor-pointer mt-2"
+            >
+          </div>
+        </div>
+
+        <!-- Notes / Memo -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-300">運動備註 / 心得記錄</label>
+          <textarea 
+            v-model="form.notes" 
+            rows="2"
+            placeholder="記錄今日身體狀況、發力感受或心得筆記..."
+            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none"
+          ></textarea>
+        </div>
+
+        <!-- Modal Footer Actions -->
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          <button 
+            type="button"
+            @click="isModalOpen = false" 
+            class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors"
+          >
+            取消
+          </button>
+          <button 
+            type="button"
+            @click="saveWorkout" 
+            class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition-transform active:scale-95"
+          >
+            {{ isEditing ? '儲存變更' : '新增記錄' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MODAL: 會員登入 / 註冊 ==================== -->
+    <div 
+      v-if="isAuthModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
+    >
+      <div class="glass-modal w-full max-w-md rounded-3xl p-6 md:p-8 space-y-6 animate-fade-in shadow-2xl">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+              <i data-lucide="user-check" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">
+              {{ authMode === 'login' ? '會員登入' : '註冊新帳號' }}
+            </h3>
+          </div>
+          <button @click="isAuthModalOpen = false" class="text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Google Login Button -->
+        <button 
+          @click="handleGoogleAuth" 
+          :disabled="authLoading"
+          class="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-sm font-semibold transition-all shadow-sm"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z"/>
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/>
+            <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z"/>
+            <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.3-6.4-5.2L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
+          </svg>
+          <span>使用 Google 帳號一鍵登入</span>
+        </button>
+
+        <div class="flex items-center gap-3 my-2">
+          <div class="h-px bg-slate-800 flex-1"></div>
+          <span class="text-xs text-slate-500 uppercase">或使用 Email</span>
+          <div class="h-px bg-slate-800 flex-1"></div>
+        </div>
+
+        <form @submit.prevent="handleEmailAuth" class="space-y-4">
+          <div v-if="authMode === 'register'" class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">您的暱稱 / 姓名</label>
+            <input 
+              type="text" 
+              v-model="authForm.displayName"
+              placeholder="例如：Alex"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">電子信箱</label>
+            <input 
+              type="email" 
+              v-model="authForm.email"
+              placeholder="your@email.com"
+              required
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-300">密碼</label>
+            <input 
+              type="password" 
+              v-model="authForm.password"
+              placeholder="至少 6 位字元"
+              required
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+          </div>
+
+          <button 
+            type="submit" 
+            :disabled="authLoading"
+            class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+          >
+            <i v-if="authLoading" data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+            <span>{{ authMode === 'login' ? '登入帳號' : '建立帳號' }}</span>
+          </button>
+        </form>
+
+        <div class="text-center pt-2">
+          <button 
+            type="button"
+            @click="authMode = authMode === 'login' ? 'register' : 'login'" 
+            class="text-xs text-indigo-400 hover:underline"
+          >
+            {{ authMode === 'login' ? '還沒有帳號？點此免費註冊' : '已經有帳號了？點此登入' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MODAL: Firebase 設定 ==================== -->
+    <div 
+      v-if="isConfigModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
+    >
+      <div class="glass-modal w-full max-w-lg rounded-3xl p-6 md:p-8 space-y-5 animate-fade-in shadow-2xl">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+              <i data-lucide="settings" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Firebase 雲端連線設定</h3>
+          </div>
+          <button @click="isConfigModalOpen = false" class="text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <p class="text-xs text-slate-400 leading-relaxed">
+          請貼上您在 Firebase Console 的 Web App 設定 JSON 物件。設定後每位使用者即可使用自己的帳號登入並同步資料。
+        </p>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-300">Firebase Config (JSON 格式)</label>
+          <textarea 
+            v-model="firebaseConfigRaw" 
+            rows="6"
+            placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-app",
+  "storageBucket": "your-app.appspot.com",
+  "messagingSenderId": "...",
+  "appId": "..."
+}'
+            class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-indigo-300 focus:outline-none focus:border-indigo-500"
+          ></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+          <button 
+            type="button"
+            @click="isConfigModalOpen = false" 
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold"
+          >
+            關閉
+          </button>
+          <button 
+            type="button"
+            @click="saveFirebaseConfig" 
+            class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30"
+          >
+            儲存並重新載入
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div 
+      v-if="showToast" 
+      class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl bg-slate-900 border border-indigo-500/40 text-white text-sm font-semibold shadow-2xl flex items-center gap-2 animate-fade-in"
+    >
+      <span>{{ toastMessage }}</span>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
