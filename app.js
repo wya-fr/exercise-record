@@ -708,11 +708,12 @@ createApp({
       return max1RM;
     });
 
-    // 動態計算有氧卡路里
+    // 動態計算運動卡路里 (採用國際標準 MET 公式)
     const calculateEstimatedCalories = () => {
       const cat = CATEGORIES.find((c) => c.id === form.category);
-      const met = cat ? cat.met : 6.0;
-      const weight = settings.userWeight || 65;
+      const preset = PRESET_EXERCISES[form.category]?.find((p) => p.name === form.name);
+      const met = (preset && preset.met) ? preset.met : (cat ? cat.met : 6.0);
+      const weight = Number(settings.userWeight) || 65;
       const durationHours = (Number(form.duration) || 0) / 60;
       form.calories = Math.round(met * weight * durationHours);
     };
@@ -819,6 +820,7 @@ createApp({
       if (preset.target) {
         form.targetMuscle = preset.target;
       }
+      calculateEstimatedCalories();
     };
 
     // 重訓組數操作
