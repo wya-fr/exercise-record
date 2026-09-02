@@ -1346,14 +1346,110 @@ createApp({
       notify('📥 運動記錄已匯出為 JSON 備份！');
     };
 
-    // 匯出 CSV
-    const exportDataCSV = () => {
-      if (workouts.value.length === 0) {
-        alert('目前沒有任何運動記錄可匯出！');
+    // ==================== CSV 匯出天數/區間篩選狀態 ====================
+    const isExportModalOpen = ref(false);
+    const exportPreset = ref('7'); // '7' | '30' | '90' | 'month' | 'year' | 'all' | 'custom'
+    const exportStartDate = ref('');
+    const exportEndDate = ref('');
+
+    function formatDateYMD(d) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // 設定快捷匯出天數區間
+    const setExportPreset = (preset) => {
+      exportPreset.value = preset;
+      const today = new Date();
+      const todayStr = getTodayString();
+      exportEndDate.value = todayStr;
+
+      if (preset === '7') {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        exportStartDate.value = formatDateYMD(d);
+      } else if (preset === '30') {
+        const d = new Date();
+        d.setDate(d.getDate() - 29);
+        exportStartDate.value = formatDateYMD(d);
+      } else if (preset === '90') {
+        const d = new Date();
+        d.setDate(d.getDate() - 89);
+        exportStartDate.value = formatDateYMD(d);
+      } else if (preset === 'month') {
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        exportStartDate.value = `${y}-${m}-01`;
+      } else if (preset === 'year') {
+        const y = today.getFullYear();
+        exportStartDate.value = `${y}-01-01`;
+      } else if (preset === 'all') {
+        if (workouts.value.length > 0) {
+          const sorted = [...workouts.value].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+          exportStartDate.value = sorted[0].date || todayStr;
+        } else {
+          exportStartDate.value = todayStr;
+        }
+      }
+    };
+
+    // 開啟 CSV 匯出設定彈窗
+    const openExportModal = () => {
+      exportEndDate.value = getTodayString();
+      setExportPreset(exportPreset.value || '7');
+      isExportModalOpen.value = true;
+      nextTick(() => {
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      });
+    };
+
+    // 依據所選日期區間篩選欲匯出的運動記錄
+    const filteredExportWorkouts = computed(() => {
+      if (exportPreset.value === 'all') {
+        return [...workouts.value].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      }
+      return workouts.value.filter((w) => {
+        if (!w.date) return false;
+        if (exportStartDate.value && w.date < exportStartDate.value) return false;
+        if (exportEndDate.value && w.date > exportEndDate.value) return false;
+        return true;
+      }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    });
+
+    // 計算匯出區間內的彙總統計
+    const exportSummaryStats = computed(() => {
+      const list = filteredExportWorkouts.value;
+      const count = list.length;
+      let totalDuration = 0;
+      let totalCalories = 0;
+      const daysSet = new Set();
+
+      list.forEach((w) => {
+        totalDuration += Number(w.duration) || 0;
+        totalCalories += Number(w.calories) || 0;
+        if (w.date) daysSet.add(w.date);
+      });
+
+      return {
+        count,
+        totalDuration,
+        totalCalories,
+        daysCount: daysSet.size,
+      };
+    });
+
+    // 確認執行 CSV 檔案下載
+    const confirmExportCSV = () => {
+      const list = filteredExportWorkouts.value;
+      if (list.length === 0) {
+        alert('所選的日期區間內沒有任何運動記錄可匯出！');
         return;
       }
+
       let csvContent = '\uFEFF日期,時間,分類,項目名稱,訓練時長(分),消耗熱量(kcal),組數/重量詳情,部位/距離/強度,備註\n';
-      workouts.value.forEach((w) => {
+      list.forEach((w) => {
         const catName = getCategoryInfo(w.category).name;
         let details = '';
         if (w.category === 'strength' && Array.isArray(w.sets)) {
@@ -1379,10 +1475,16 @@ createApp({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `FitTrack_Records_${getTodayString()}.csv`;
+
+      let filename = `FitTrack_Records_${exportStartDate.value}_至_${exportEndDate.value}.csv`;
+      if (exportPreset.value === 'all') {
+        filename = `FitTrack_Records_全部歷史_${getTodayString()}.csv`;
+      }
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      notify('📊 運動記錄已匯出為 CSV 試算表！');
+      isExportModalOpen.value = false;
+      notify(`📊 成功匯出 ${list.length} 筆運動記錄 CSV 試算表！`);
     };
 
     // 匯入 JSON
@@ -1561,7 +1663,15 @@ createApp({
       getCategoryInfo,
       formatDateDisplay,
       exportDataJSON,
-      exportDataCSV,
+      isExportModalOpen,
+      exportPreset,
+      exportStartDate,
+      exportEndDate,
+      setExportPreset,
+      openExportModal,
+      filteredExportWorkouts,
+      exportSummaryStats,
+      confirmExportCSV,
       importDataJSON,
       loadSampleData,
       handleEmailAuth,
