@@ -745,6 +745,20 @@ createApp({
       currentTab.value = 'daily';
     };
 
+    // 快速微調時長
+    const adjustDuration = (delta) => {
+      const current = Number(form.duration) || 0;
+      const next = Math.max(1, current + delta);
+      form.duration = next;
+      calculateEstimatedCalories();
+    };
+
+    // 快捷設定時長
+    const setDuration = (mins) => {
+      form.duration = Math.max(1, mins);
+      calculateEstimatedCalories();
+    };
+
     // 開啟新增表單
     const openAddModal = (presetCategory) => {
       isEditing.value = false;
@@ -761,7 +775,7 @@ createApp({
       form.time = `${currentHours}:${currentMins}`;
       form.notes = '';
       form.targetMuscle = '';
-      form.duration = form.category === 'strength' ? 45 : 30;
+      form.duration = form.category === 'stretch' ? 15 : (form.category === 'hiit' ? 20 : 30);
       form.distance = 5.0;
       form.heartRate = 135;
       form.intensity = 7;
@@ -810,7 +824,9 @@ createApp({
       } else {
         form.name = '';
       }
-      form.duration = catId === 'strength' ? 45 : 30;
+      if (!isEditing.value) {
+        form.duration = catId === 'stretch' ? 15 : (catId === 'hiit' ? 20 : 30);
+      }
       calculateEstimatedCalories();
     };
 
@@ -1654,6 +1670,8 @@ createApp({
       openEditModal,
       onCategoryChange,
       selectPresetExercise,
+      adjustDuration,
+      setDuration,
       addSet,
       removeSet,
       copyLastSet,

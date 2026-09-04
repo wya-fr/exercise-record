@@ -63,9 +63,9 @@
   <meta property="og:type" content="website">
 
   <!-- Local Firebase Config -->
-  <script src="firebase-config.js?v=9.0"></script>
+  <script src="firebase-config.js?v=10.0"></script>
   
-  <link rel="stylesheet" href="styles.css?v=9.0">
+  <link rel="stylesheet" href="styles.css?v=10.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
 
@@ -836,14 +836,14 @@
             </div>
           </div>
 
-          <!-- Date & Time Row -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Date, Time & Universal Duration Row -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div class="space-y-1.5">
               <label class="text-xs font-semibold text-slate-300">記錄日期</label>
               <input 
                 type="date" 
                 v-model="form.date" 
-                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
               >
             </div>
 
@@ -852,18 +852,64 @@
               <input 
                 type="time" 
                 v-model="form.time" 
-                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
               >
             </div>
+
+            <!-- 自由自訂時長與加減微調 -->
+            <div class="space-y-1.5">
+              <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span>運動時長 (分鐘) <span class="text-rose-400">*</span></span>
+              </label>
+              <div class="flex items-center gap-1">
+                <button 
+                  type="button" 
+                  @click="adjustDuration(-5)"
+                  class="w-8 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold shrink-0 transition-colors"
+                  title="減少 5 分鐘"
+                >-5</button>
+                <input 
+                  type="number" 
+                  min="1"
+                  step="1"
+                  v-model.number="form.duration" 
+                  @input="calculateEstimatedCalories"
+                  placeholder="30"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-sm text-center text-white focus:outline-none focus:border-indigo-500 font-bold text-indigo-300"
+                >
+                <button 
+                  type="button" 
+                  @click="adjustDuration(5)"
+                  class="w-8 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold shrink-0 transition-colors"
+                  title="增加 5 分鐘"
+                >+5</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 常用時長快選標籤 (Quick Duration Chips) -->
+          <div class="flex items-center gap-1.5 flex-wrap pt-0.5">
+            <span class="text-[11px] text-slate-400 font-medium">常用時長快選：</span>
+            <button 
+              type="button"
+              v-for="mins in [5, 10, 15, 20, 25, 30, 40, 45, 60, 90]"
+              :key="mins"
+              @click="setDuration(mins)"
+              :class="form.duration === mins ? 'bg-indigo-600 text-white font-bold ring-1 ring-indigo-400 shadow-sm' : 'bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700'"
+              class="px-2 py-0.5 rounded-lg text-xs border transition-all"
+            >
+              {{ mins }}分
+            </button>
           </div>
 
           <!-- Dynamic Section 1: STRENGTH DETAIL -->
           <div v-if="form.category === 'strength'" class="space-y-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm font-bold text-white">重訓組數列表</span>
                 <span class="text-xs text-indigo-400 font-medium">總容量：{{ formTotalVolume }} kg</span>
-                <span v-if="estimated1RM > 0" class="text-xs text-emerald-400 font-medium ml-2">預估 1RM：{{ estimated1RM }} kg</span>
+                <span v-if="estimated1RM > 0" class="text-xs text-emerald-400 font-medium">預估 1RM：{{ estimated1RM }} kg</span>
+                <span class="text-xs text-rose-400 font-medium">預估消耗：{{ form.calories }} kcal</span>
               </div>
               
               <div class="flex items-center gap-2">
@@ -940,13 +986,12 @@
           <!-- Dynamic Section 2: CARDIO / HIIT / STRETCH METRICS -->
           <div v-else class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
             <div class="space-y-1.5">
-              <label class="text-xs font-semibold text-slate-300">運動時長 (分鐘) <span class="text-rose-400">*</span></label>
+              <label class="text-xs font-semibold text-slate-300">預估消耗熱量 (kcal)</label>
               <input 
                 type="number" 
-                v-model.number="form.duration" 
-                @input="calculateEstimatedCalories"
-                placeholder="30"
-                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-bold"
+                v-model.number="form.calories" 
+                placeholder="自動計算"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-bold text-rose-400"
               >
             </div>
 
@@ -958,16 +1003,6 @@
                 v-model.number="form.distance" 
                 placeholder="5.0"
                 class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-              >
-            </div>
-
-            <div class="space-y-1.5">
-              <label class="text-xs font-semibold text-slate-300">預估消耗熱量 (kcal)</label>
-              <input 
-                type="number" 
-                v-model.number="form.calories" 
-                placeholder="自動計算"
-                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-bold text-rose-400"
               >
             </div>
 
@@ -1500,6 +1535,6 @@
 
   </div>
 
-  <script src="app.js?v=9.0"></script>
+  <script src="app.js?v=10.0"></script>
 </body>
 </html>
