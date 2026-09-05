@@ -42,6 +42,10 @@
   <!-- Vue 3 -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
+  <!-- Leaflet CSS & JS for Route Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
   <!-- Firebase App & Services (Compat CDN) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
@@ -63,9 +67,9 @@
   <meta property="og:type" content="website">
 
   <!-- Local Firebase Config -->
-  <script src="firebase-config.js?v=10.0"></script>
+  <script src="firebase-config.js?v=11.0"></script>
   
-  <link rel="stylesheet" href="styles.css?v=10.0">
+  <link rel="stylesheet" href="styles.css?v=11.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
 
@@ -488,6 +492,29 @@
               </div>
             </div>
 
+            <!-- Route Information Badge & Map Button -->
+            <div 
+              v-if="workout.routeName || (workout.routePoints && workout.routePoints.length > 0)" 
+              class="mt-3 p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2"
+            >
+              <div class="flex items-center gap-2 text-xs text-cyan-300 font-medium">
+                <i data-lucide="map" class="w-4 h-4 text-cyan-400 shrink-0"></i>
+                <span>路線：<strong class="text-white">{{ workout.routeName || '自訂 GPS 軌跡路線' }}</strong></span>
+                <span v-if="workout.routePoints && workout.routePoints.length > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
+                  {{ workout.routePoints.length }} 個座標點
+                </span>
+              </div>
+              <button 
+                v-if="workout.routePoints && workout.routePoints.length > 0"
+                type="button"
+                @click="viewWorkoutRouteMap(workout)"
+                class="px-2.5 py-1 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 text-xs font-semibold flex items-center gap-1.5 border border-cyan-500/40 transition-colors shadow-sm"
+              >
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-300"></i>
+                <span>查看地圖軌跡</span>
+              </button>
+            </div>
+
             <!-- Notes Section -->
             <div v-if="workout.notes" class="mt-3 text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800/60 flex items-start gap-2">
               <i data-lucide="file-text" class="w-4 h-4 text-indigo-400 shrink-0 mt-0.5"></i>
@@ -720,6 +747,10 @@
               </div>
               <div class="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-3">
                 <span v-if="workout.duration">時長：{{ workout.duration }} 分鐘</span>
+                <span v-if="workout.distance">距離：{{ workout.distance }} km</span>
+                <span v-if="workout.routeName" class="text-cyan-400 font-medium flex items-center gap-1">
+                  <i data-lucide="map" class="w-3 h-3"></i> {{ workout.routeName }}
+                </span>
                 <span v-if="workout.calories">消耗：{{ workout.calories }} kcal</span>
                 <span v-if="workout.category === 'strength' && workout.sets">組數：{{ workout.sets.length }} 組</span>
                 <span v-if="workout.notes" class="text-slate-500 italic max-w-xs truncate">{{ workout.notes }}</span>
@@ -728,6 +759,14 @@
           </div>
 
           <div class="flex items-center gap-2 self-end sm:self-center">
+            <button 
+              v-if="workout.routePoints && workout.routePoints.length > 0"
+              @click="viewWorkoutRouteMap(workout)"
+              class="p-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/40 transition-colors"
+              title="查看路線地圖"
+            >
+              <i data-lucide="map-pin" class="w-4 h-4"></i>
+            </button>
             <button 
               @click="openEditModal(workout)" 
               class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
@@ -1028,6 +1067,64 @@
                 v-model.number="form.intensity" 
                 class="w-full accent-indigo-500 cursor-pointer mt-2"
               >
+            </div>
+          </div>
+
+          <!-- Cardio & Sports Route Marking Section -->
+          <div v-if="form.category === 'cardio' || form.category === 'sports'" class="space-y-3 p-4 rounded-2xl bg-cyan-950/20 border border-cyan-800/40">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <i data-lucide="map" class="w-4 h-4 text-cyan-400"></i>
+                <label class="text-xs font-bold text-cyan-300">慢跑／騎行路線標註與地圖</label>
+              </div>
+              <button 
+                type="button"
+                @click="openRouteDrawModal"
+                class="px-3 py-1 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 text-xs font-semibold border border-cyan-500/40 flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-300"></i>
+                <span>{{ form.routePoints && form.routePoints.length > 0 ? '編輯地圖路線 (' + form.routePoints.length + ' 點)' : '在互動地圖上繪製/標註路線' }}</span>
+              </button>
+            </div>
+
+            <!-- Route Name Input -->
+            <div class="space-y-1.5">
+              <input 
+                type="text" 
+                v-model="form.routeName" 
+                placeholder="輸入自訂路線名稱（例如：河濱自行車道、大安森林公園外圈...）"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+              >
+            </div>
+
+            <!-- Quick Route Presets -->
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[11px] text-slate-400">推薦路線：</span>
+              <button 
+                type="button"
+                v-for="rName in QUICK_ROUTES"
+                :key="rName"
+                @click="selectQuickRoute(rName)"
+                :class="form.routeName === rName ? 'bg-cyan-600 text-white font-bold ring-1 ring-cyan-400 shadow-sm' : 'bg-slate-900/80 text-slate-300 border-slate-700/60 hover:bg-slate-800'"
+                class="px-2 py-0.5 rounded-lg text-[11px] border transition-all"
+              >
+                {{ rName.split(' (')[0] }}
+              </button>
+            </div>
+
+            <!-- Route Path Summary if Points Exist -->
+            <div v-if="form.routePoints && form.routePoints.length > 0" class="p-2.5 rounded-xl bg-slate-900/80 border border-cyan-500/30 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2 text-slate-300">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                <span>已在地圖標記 <strong>{{ form.routePoints.length }}</strong> 個航點，測量距離為 <strong class="text-cyan-400">{{ form.distance }} km</strong></span>
+              </div>
+              <button 
+                type="button" 
+                @click="removeFormRoute" 
+                class="text-xs text-slate-400 hover:text-rose-400 underline transition-colors"
+              >
+                清除地圖路線
+              </button>
             </div>
           </div>
 
@@ -1525,6 +1622,180 @@
       </div>
     </div>
 
+    <!-- ==================== 路線地圖繪製與標註彈窗 (ROUTE DRAW MODAL) ==================== -->
+    <div 
+      v-if="isRouteModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fade-in"
+      @click.self="isRouteModalOpen = false"
+    >
+      <div class="glass-card w-full max-w-2xl rounded-3xl p-5 md:p-6 border border-slate-700/80 shadow-2xl space-y-4 max-h-[94vh] overflow-y-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+              <i data-lucide="map" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">慢跑／騎行路線標註與距離測量</h3>
+              <p class="text-xs text-slate-400">點擊地圖標記路線（起點 🟢 ➔ 終點 🔴）或匯入 GPX 軌跡檔</p>
+            </div>
+          </div>
+          <button 
+            @click="isRouteModalOpen = false" 
+            class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Map Toolbar -->
+        <div class="flex items-center justify-between flex-wrap gap-2 text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <button 
+              type="button" 
+              @click="locateCurrentGPS(true)"
+              :disabled="isGpsLocating"
+              class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors"
+            >
+              <i data-lucide="crosshair" class="w-3.5 h-3.5" :class="isGpsLocating ? 'animate-spin' : ''"></i>
+              <span>{{ isGpsLocating ? 'GPS 定位中...' : '📍 GPS 定位我' }}</span>
+            </button>
+
+            <label class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+              <span>📁 匯入 GPX 軌跡檔</span>
+              <input type="file" accept=".gpx" @change="importGPXFile" class="hidden">
+            </label>
+
+            <button 
+              type="button" 
+              @click="undoLastRoutePoint" 
+              :disabled="tempRoutePoints.length === 0"
+              class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-300 font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors"
+              title="復原上一個標記點"
+            >
+              <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+              <span>復原</span>
+            </button>
+
+            <button 
+              type="button" 
+              @click="clearRoutePoints" 
+              :disabled="tempRoutePoints.length === 0"
+              class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-rose-400 font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors"
+              title="清空所有標記點"
+            >
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>清空</span>
+            </button>
+          </div>
+
+          <div class="px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-2">
+            <span>航點：<strong class="text-white">{{ tempRoutePoints.length }}</strong> 個</span>
+            <span class="text-slate-600">|</span>
+            <span>測量距離：<strong class="text-cyan-400 text-sm font-bold">{{ tempRouteDistance }} km</strong></span>
+          </div>
+        </div>
+
+        <!-- Leaflet Map Canvas Container -->
+        <div class="relative">
+          <div id="route-draw-map" class="route-map-container"></div>
+          <div v-if="tempRoutePoints.length === 0" class="absolute top-3 left-12 z-[1000] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-slate-300 shadow-lg pointer-events-none">
+            💡 點擊地圖任意位置開始標記路線起點與途徑點
+          </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+          <div class="text-xs text-slate-400 hidden sm:block">
+            儲存後將自動把此測量里程 ({{ tempRouteDistance }} km) 帶入運動記錄
+          </div>
+          <div class="flex items-center gap-3 ml-auto">
+            <button 
+              type="button" 
+              @click="isRouteModalOpen = false" 
+              class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold transition-colors"
+            >
+              取消
+            </button>
+            <button 
+              type="button" 
+              @click="saveRouteToForm" 
+              :disabled="tempRoutePoints.length === 0"
+              class="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-cyan-600/30 flex items-center gap-2 transition-transform active:scale-95"
+            >
+              <i data-lucide="check" class="w-4 h-4"></i>
+              <span>確認套用此路線 ({{ tempRouteDistance }} km)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 路線軌跡地圖檢視彈窗 (ROUTE VIEWER MODAL) ==================== -->
+    <div 
+      v-if="isViewerMapModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fade-in"
+      @click.self="isViewerMapModalOpen = false"
+    >
+      <div class="glass-card w-full max-w-2xl rounded-3xl p-5 md:p-6 border border-slate-700/80 shadow-2xl space-y-4 max-h-[94vh] overflow-y-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+              <i data-lucide="map-pin" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">{{ viewingWorkoutRoute?.name }} · 路線軌跡</h3>
+              <p class="text-xs text-slate-400">
+                {{ viewingWorkoutRoute?.date }} {{ viewingWorkoutRoute?.time }} · {{ viewingWorkoutRoute?.routeName || 'GPS 軌跡路線' }}
+              </p>
+            </div>
+          </div>
+          <button 
+            @click="isViewerMapModalOpen = false" 
+            class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Metrics Overview Bar -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+          <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+            <div class="text-[10px] text-slate-400">路線距離</div>
+            <div class="text-sm font-bold text-cyan-400">{{ viewingWorkoutRoute?.distance || 0 }} km</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+            <div class="text-[10px] text-slate-400">運動時長</div>
+            <div class="text-sm font-bold text-white">{{ viewingWorkoutRoute?.duration || 0 }} 分鐘</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+            <div class="text-[10px] text-slate-400">消耗熱量</div>
+            <div class="text-sm font-bold text-rose-400">{{ viewingWorkoutRoute?.calories || 0 }} kcal</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+            <div class="text-[10px] text-slate-400">航點數量</div>
+            <div class="text-sm font-bold text-indigo-400">{{ viewingWorkoutRoute?.routePoints?.length || 0 }} 點</div>
+          </div>
+        </div>
+
+        <!-- Leaflet Map Container -->
+        <div id="route-viewer-map" class="route-map-container"></div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-end pt-3 border-t border-slate-800">
+          <button 
+            type="button" 
+            @click="isViewerMapModalOpen = false" 
+            class="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold transition-colors"
+          >
+            關閉
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div 
       v-if="showToast" 
@@ -1535,6 +1806,6 @@
 
   </div>
 
-  <script src="app.js?v=10.0"></script>
+  <script src="app.js?v=11.0"></script>
 </body>
 </html>

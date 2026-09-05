@@ -170,6 +170,10 @@ createApp({
       heartRate: 135,
       calories: 0,
       intensity: 7,
+
+      // 慢跑與騎行路線標註專用
+      routeName: '',
+      routePoints: [], // 經緯度航點陣列 [{lat, lng}]
     });
 
     // 圖表實例
@@ -759,6 +763,361 @@ createApp({
       calculateEstimatedCalories();
     };
 
+    // ==================== 慢跑與騎行路線標註與地圖狀態 ====================
+    const isRouteModalOpen = ref(false);
+    const isViewerMapModalOpen = ref(false);
+    const viewingWorkoutRoute = ref(null);
+    const tempRoutePoints = ref([]); // [{lat, lng}]
+    const isGpsLocating = ref(false);
+
+    let routeDrawMap = null;
+    let routeDrawPolyline = null;
+    let routeDrawMarkers = [];
+
+    let routeViewerMap = null;
+    let routeViewerPolyline = null;
+    let routeViewerMarkers = [];
+
+    const QUICK_ROUTES = [
+      '河濱公園自行車道 (Riverbank Bikeway)',
+      '都會森林公園外環 (City Park Loop)',
+      '學校標準操場 400m (Standard Track)',
+      '社區外圍公路夜跑 (Night Road Route)',
+      '景觀跨橋自行車環線 (Scenic Bridge Loop)',
+      '山道爬坡心肺挑戰 (Hill Climb Challenge)',
+    ];
+
+    // 計算經緯度航點陣列的總測量里程 (公里, Haversine 公式)
+    function calculateRouteDistance(points) {
+      if (!Array.isArray(points) || points.length < 2) return 0;
+      let totalKm = 0;
+      const R = 6371; // 地球半徑 (km)
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const lat1 = (Number(p1.lat !== undefined ? p1.lat : p1[0])) * (Math.PI / 180);
+        const lon1 = (Number(p1.lng !== undefined ? p1.lng : p1[1])) * (Math.PI / 180);
+        const lat2 = (Number(p2.lat !== undefined ? p2.lat : p2[0])) * (Math.PI / 180);
+        const lon2 = (Number(p2.lng !== undefined ? p2.lng : p2[1])) * (Math.PI / 180);
+        const dLat = lat2 - lat1;
+        const dLon = lon2 - lon1;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        totalKm += R * c;
+      }
+      return Number(totalKm.toFixed(2));
+    }
+
+    const tempRouteDistance = computed(() => {
+      return calculateRouteDistance(tempRoutePoints.value);
+    });
+
+    // 開啟路線繪製與地圖標註彈窗
+    const openRouteDrawModal = () => {
+      tempRoutePoints.value = Array.isArray(form.routePoints)
+        ? JSON.parse(JSON.stringify(form.routePoints))
+        : [];
+      isRouteModalOpen.value = true;
+
+      nextTick(() => {
+        initRouteDrawMap();
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      });
+    };
+
+    // 初始化繪圖地圖
+    const initRouteDrawMap = () => {
+      if (routeDrawMap) {
+        routeDrawMap.remove();
+        routeDrawMap = null;
+      }
+
+      const mapContainer = document.getElementById('route-draw-map');
+      if (!mapContainer || typeof L === 'undefined') return;
+
+      let center = [25.033, 121.5654];
+      let zoom = 14;
+
+      if (tempRoutePoints.value.length > 0) {
+        center = [tempRoutePoints.value[0].lat, tempRoutePoints.value[0].lng];
+      }
+
+      routeDrawMap = L.map('route-draw-map', {
+        zoomControl: true,
+      }).setView(center, zoom);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors',
+      }).addTo(routeDrawMap);
+
+      // 點擊地圖新增航點
+      routeDrawMap.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        tempRoutePoints.value.push({
+          lat: Number(lat.toFixed(6)),
+          lng: Number(lng.toFixed(6)),
+        });
+        updateRouteDrawLayers();
+      });
+
+      updateRouteDrawLayers();
+
+      if (tempRoutePoints.value.length > 1) {
+        const latLngs = tempRoutePoints.value.map((p) => [p.lat, p.lng]);
+        routeDrawMap.fitBounds(latLngs, { padding: [30, 30] });
+      } else if (tempRoutePoints.value.length === 0 && navigator.geolocation) {
+        locateCurrentGPS(false);
+      }
+    };
+
+    // 更新地圖上的路線折線與標記
+    const updateRouteDrawLayers = () => {
+      if (!routeDrawMap || typeof L === 'undefined') return;
+
+      routeDrawMarkers.forEach((m) => routeDrawMap.removeLayer(m));
+      routeDrawMarkers = [];
+
+      if (routeDrawPolyline) {
+        routeDrawMap.removeLayer(routeDrawPolyline);
+        routeDrawPolyline = null;
+      }
+
+      if (tempRoutePoints.value.length === 0) return;
+
+      const latLngs = tempRoutePoints.value.map((p) => [p.lat, p.lng]);
+
+      routeDrawPolyline = L.polyline(latLngs, {
+        color: '#06b6d4',
+        weight: 5,
+        opacity: 0.85,
+        smoothFactor: 1,
+      }).addTo(routeDrawMap);
+
+      // 起點標記
+      const startPoint = tempRoutePoints.value[0];
+      const startIcon = L.divIcon({
+        className: 'custom-map-pin bg-emerald-500 ring-2 ring-white',
+        html: '<span>起</span>',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+      const startMarker = L.marker([startPoint.lat, startPoint.lng], { icon: startIcon }).addTo(routeDrawMap);
+      routeDrawMarkers.push(startMarker);
+
+      // 終點標記
+      if (tempRoutePoints.value.length >= 2) {
+        const endPoint = tempRoutePoints.value[tempRoutePoints.value.length - 1];
+        const endIcon = L.divIcon({
+          className: 'custom-map-pin bg-rose-500 ring-2 ring-white',
+          html: '<span>終</span>',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        const endMarker = L.marker([endPoint.lat, endPoint.lng], { icon: endIcon }).addTo(routeDrawMap);
+        routeDrawMarkers.push(endMarker);
+      }
+    };
+
+    // GPS 定位
+    const locateCurrentGPS = (showNotification = true) => {
+      if (!navigator.geolocation) {
+        if (showNotification) alert('您的瀏覽器不支援 GPS 地理定位功能！');
+        return;
+      }
+
+      isGpsLocating.value = true;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          isGpsLocating.value = false;
+          const { latitude, longitude } = pos.coords;
+          if (routeDrawMap) {
+            routeDrawMap.setView([latitude, longitude], 16);
+            if (tempRoutePoints.value.length === 0) {
+              tempRoutePoints.value.push({
+                lat: Number(latitude.toFixed(6)),
+                lng: Number(longitude.toFixed(6)),
+              });
+              updateRouteDrawLayers();
+            }
+          }
+          if (showNotification) notify('📍 已成功定位至您的目前位置！');
+        },
+        (err) => {
+          isGpsLocating.value = false;
+          console.warn('GPS location error:', err);
+          if (showNotification) alert('無法取得 GPS 定位，請確認手機或瀏覽器是否已允許定位權限！');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    };
+
+    // 復原上一個標記點
+    const undoLastRoutePoint = () => {
+      if (tempRoutePoints.value.length > 0) {
+        tempRoutePoints.value.pop();
+        updateRouteDrawLayers();
+      }
+    };
+
+    // 清空所有標記點
+    const clearRoutePoints = () => {
+      if (tempRoutePoints.value.length === 0) return;
+      if (confirm('確定要清空目前繪製的所有路線標記嗎？')) {
+        tempRoutePoints.value = [];
+        updateRouteDrawLayers();
+      }
+    };
+
+    // 匯入 GPX 檔案
+    const importGPXFile = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target.result;
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(content, 'text/xml');
+          const trkpts = xmlDoc.getElementsByTagName('trkpt');
+
+          if (!trkpts || trkpts.length === 0) {
+            alert('無法在此 GPX 檔案中找到運動軌跡座標 (trkpt)！');
+            return;
+          }
+
+          const parsedPoints = [];
+          const step = Math.max(1, Math.floor(trkpts.length / 350));
+          for (let i = 0; i < trkpts.length; i += step) {
+            const lat = parseFloat(trkpts[i].getAttribute('lat'));
+            const lon = parseFloat(trkpts[i].getAttribute('lon'));
+            if (!isNaN(lat) && !isNaN(lon)) {
+              parsedPoints.push({
+                lat: Number(lat.toFixed(6)),
+                lng: Number(lon.toFixed(6)),
+              });
+            }
+          }
+
+          if (trkpts.length > 1) {
+            const last = trkpts[trkpts.length - 1];
+            const lat = parseFloat(last.getAttribute('lat'));
+            const lon = parseFloat(last.getAttribute('lon'));
+            if (!isNaN(lat) && !isNaN(lon)) {
+              parsedPoints.push({
+                lat: Number(lat.toFixed(6)),
+                lng: Number(lon.toFixed(6)),
+              });
+            }
+          }
+
+          tempRoutePoints.value = parsedPoints;
+          updateRouteDrawLayers();
+
+          if (routeDrawMap && parsedPoints.length > 0) {
+            const latLngs = parsedPoints.map((p) => [p.lat, p.lng]);
+            routeDrawMap.fitBounds(latLngs, { padding: [30, 30] });
+          }
+
+          notify(`📁 成功解析 GPX 軌跡檔！共載入 ${parsedPoints.length} 個航點`);
+        } catch (err) {
+          console.error('GPX parse error:', err);
+          alert('解析 GPX 檔案失敗，請確認檔案格式是否正確！');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    };
+
+    // 儲存路線至表單
+    const saveRouteToForm = () => {
+      form.routePoints = JSON.parse(JSON.stringify(tempRoutePoints.value));
+      const dist = tempRouteDistance.value;
+      if (dist > 0) {
+        form.distance = dist;
+        calculateEstimatedCalories();
+      }
+      isRouteModalOpen.value = false;
+      notify(`🗺️ 路線已成功套用！測量距離為 ${dist} km`);
+    };
+
+    // 清除已儲存的路線
+    const removeFormRoute = () => {
+      form.routePoints = [];
+      notify('已清除此項目的路線軌跡標記');
+    };
+
+    // 選擇常用路線名稱快選
+    const selectQuickRoute = (routeName) => {
+      form.routeName = routeName;
+    };
+
+    // 查看已記錄的運動路線地圖彈窗
+    const viewWorkoutRouteMap = (workout) => {
+      viewingWorkoutRoute.value = workout;
+      isViewerMapModalOpen.value = true;
+
+      nextTick(() => {
+        initRouteViewerMap(workout);
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      });
+    };
+
+    // 初始化查看地圖
+    const initRouteViewerMap = (workout) => {
+      if (routeViewerMap) {
+        routeViewerMap.remove();
+        routeViewerMap = null;
+      }
+
+      const container = document.getElementById('route-viewer-map');
+      if (!container || typeof L === 'undefined' || !workout.routePoints || workout.routePoints.length === 0) return;
+
+      const points = workout.routePoints;
+      const center = [points[0].lat, points[0].lng];
+
+      routeViewerMap = L.map('route-viewer-map', {
+        zoomControl: true,
+      }).setView(center, 15);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors',
+      }).addTo(routeViewerMap);
+
+      const latLngs = points.map((p) => [p.lat, p.lng]);
+
+      routeViewerPolyline = L.polyline(latLngs, {
+        color: '#06b6d4',
+        weight: 5,
+        opacity: 0.9,
+      }).addTo(routeViewerMap);
+
+      const startIcon = L.divIcon({
+        className: 'custom-map-pin bg-emerald-500 ring-2 ring-white',
+        html: '<span>起</span>',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+      L.marker([points[0].lat, points[0].lng], { icon: startIcon }).addTo(routeViewerMap);
+
+      if (points.length >= 2) {
+        const last = points[points.length - 1];
+        const endIcon = L.divIcon({
+          className: 'custom-map-pin bg-rose-500 ring-2 ring-white',
+          html: '<span>終</span>',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        L.marker([last.lat, last.lng], { icon: endIcon }).addTo(routeViewerMap);
+      }
+
+      routeViewerMap.fitBounds(latLngs, { padding: [35, 35] });
+    };
+
     // 開啟新增表單
     const openAddModal = (presetCategory) => {
       isEditing.value = false;
@@ -779,6 +1138,8 @@ createApp({
       form.distance = 5.0;
       form.heartRate = 135;
       form.intensity = 7;
+      form.routeName = '';
+      form.routePoints = [];
       form.sets = [
         { weight: 40, reps: 10, completed: true, isWarmup: false },
         { weight: 40, reps: 10, completed: true, isWarmup: false },
@@ -807,6 +1168,8 @@ createApp({
       form.heartRate = workout.heartRate || 0;
       form.calories = workout.calories || 0;
       form.intensity = workout.intensity || 7;
+      form.routeName = workout.routeName || '';
+      form.routePoints = Array.isArray(workout.routePoints) ? JSON.parse(JSON.stringify(workout.routePoints)) : [];
       form.sets = workout.sets ? JSON.parse(JSON.stringify(workout.sets)) : [
         { weight: 40, reps: 10, completed: true, isWarmup: false }
       ];
@@ -891,6 +1254,8 @@ createApp({
         distance: form.category === 'cardio' ? Number(form.distance) || 0 : null,
         heartRate: Number(form.heartRate) || null,
         intensity: Number(form.intensity) || null,
+        routeName: form.routeName ? form.routeName.trim() : '',
+        routePoints: Array.isArray(form.routePoints) && form.routePoints.length > 0 ? JSON.parse(JSON.stringify(form.routePoints)) : null,
         updatedAt: new Date().toISOString(),
       };
 
@@ -1672,6 +2037,23 @@ createApp({
       selectPresetExercise,
       adjustDuration,
       setDuration,
+      isRouteModalOpen,
+      isViewerMapModalOpen,
+      viewingWorkoutRoute,
+      tempRoutePoints,
+      tempRouteDistance,
+      isGpsLocating,
+      QUICK_ROUTES,
+      openRouteDrawModal,
+      updateRouteDrawLayers,
+      locateCurrentGPS,
+      undoLastRoutePoint,
+      clearRoutePoints,
+      importGPXFile,
+      saveRouteToForm,
+      removeFormRoute,
+      selectQuickRoute,
+      viewWorkoutRouteMap,
       addSet,
       removeSet,
       copyLastSet,
