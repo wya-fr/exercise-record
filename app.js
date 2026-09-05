@@ -1221,10 +1221,22 @@ createApp({
       }
     };
 
+    // 複製特效回饋狀態
+    const isCopyingSet = ref(false);
+    const highlightedSetIdx = ref(-1);
+
     const copyLastSet = () => {
       if (form.sets.length > 0) {
         const last = form.sets[form.sets.length - 1];
         form.sets.push({ ...last });
+        highlightedSetIdx.value = form.sets.length - 1;
+        isCopyingSet.value = true;
+        setTimeout(() => {
+          isCopyingSet.value = false;
+        }, 1500);
+        setTimeout(() => {
+          highlightedSetIdx.value = -1;
+        }, 2200);
       }
     };
 
@@ -1369,6 +1381,14 @@ createApp({
       }
     };
 
+    // 複製相關視覺回饋狀態
+    const copiedWorkoutId = ref(null);
+    const isConfirmingCopy = ref(false);
+    const isQuickCopying = ref(false);
+    const isSingleCopyModalOpen = ref(false);
+    const singleCopyWorkout = ref(null);
+    const singleCopyTargetDate = ref(getTodayString());
+
     // 執行複製課表
     const confirmCopyWorkouts = async () => {
       if (selectedWorkoutIdsToCopy.value.length === 0) {
@@ -1376,6 +1396,7 @@ createApp({
         return;
       }
 
+      isConfirmingCopy.value = true;
       const itemsToClone = copySourceWorkouts.value.filter((w) =>
         selectedWorkoutIdsToCopy.value.includes(w.id)
       );
@@ -1403,18 +1424,21 @@ createApp({
       workouts.value = [...clonedList, ...workouts.value];
       selectedDate.value = copyTargetDate.value;
       saveLocalData();
-      isCopyModalOpen.value = false;
-      notify(`📋 成功複製 ${clonedList.length} 筆運動課表到 ${formatDateDisplay(copyTargetDate.value)}！`);
       triggerConfetti();
-      nextTick(() => {
-        renderCharts();
-        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-      });
+
+      setTimeout(() => {
+        isConfirmingCopy.value = false;
+        isCopyModalOpen.value = false;
+        notify(`📋 成功複製 ${clonedList.length} 筆運動課表到 ${formatDateDisplay(copyTargetDate.value)}！`);
+        nextTick(() => {
+          renderCharts();
+          if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+        });
+      }, 550);
     };
 
     // 一鍵快速複製前一日或最近一次所有記錄
     const quickCopyPreviousDay = async () => {
-      // 1. 取得目標日期的前一日
       const d = new Date(selectedDate.value + 'T00:00:00');
       d.setDate(d.getDate() - 1);
       const y = d.getFullYear();
@@ -1425,7 +1449,7 @@ createApp({
       let sourceDate = yesterdayStr;
       let sourceWorkouts = workouts.value.filter((w) => w.date === sourceDate);
 
-      // 2. 若昨天沒有任何記錄，智慧尋找「最近一次有記錄的日期」
+      // 若昨天沒有任何記錄，智慧尋找「最近一次有記錄的日期」
       if (sourceWorkouts.length === 0) {
         const lastDate = getLastWorkoutDate(selectedDate.value);
         if (lastDate) {
@@ -1434,7 +1458,6 @@ createApp({
         }
       }
 
-      // 3. 若依然完全沒有任何歷史記錄，開啟示範資料或提示
       if (sourceWorkouts.length === 0) {
         if (confirm('目前資料庫中尚未有任何運動記錄可複製！是否要為您載入近期的示範運動課表？')) {
           await loadSampleData();
@@ -1442,7 +1465,7 @@ createApp({
         return;
       }
 
-      // 4. 複製該日所有項目
+      isQuickCopying.value = true;
       const clonedList = [];
       const currentNow = new Date();
       const curHours = String(currentNow.getHours()).padStart(2, '0');
@@ -1467,21 +1490,46 @@ createApp({
       saveLocalData();
       notify(`📋 已成功複製 ${formatDateDisplay(sourceDate)} 的 ${clonedList.length} 筆課表到今日！`);
       triggerConfetti();
+
+      setTimeout(() => {
+        isQuickCopying.value = false;
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      }, 2000);
+
       nextTick(() => {
         renderCharts();
         if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
       });
     };
 
-    // 單筆運動卡片複製到其他天
-    const copySingleWorkout = async (workout) => {
-      const targetDate = prompt(`要將「${workout.name}」複製到哪一天？(格式：YYYY-MM-DD)`, selectedDate.value);
-      if (!targetDate || !targetDate.trim()) return;
-      const cleanDate = targetDate.trim();
-      
-      // 驗證日期格式
+    // 開啟單筆運動複製彈窗
+    const openSingleCopyModal = (workout) => {
+      singleCopyWorkout.value = workout;
+      singleCopyTargetDate.value = selectedDate.value;
+      isSingleCopyModalOpen.value = true;
+      nextTick(() => {
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      });
+    };
+
+    // 快捷設定單筆複製目標日期 (今天, 明天, 昨天)
+    const setSingleCopyTargetDatePreset = (offsetDays) => {
+      const now = new Date();
+      now.setDate(now.getDate() + offsetDays);
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      singleCopyTargetDate.value = `${y}-${m}-${d}`;
+    };
+
+    // 確認執行單筆運動複製
+    const confirmSingleCopyWorkout = async () => {
+      if (!singleCopyWorkout.value) return;
+      const workout = singleCopyWorkout.value;
+      const cleanDate = singleCopyTargetDate.value;
+
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
-        alert('日期格式不正確，請使用 YYYY-MM-DD 格式（例如：2026-09-02）');
+        alert('請選擇有效的目標日期！');
         return;
       }
 
@@ -1497,14 +1545,28 @@ createApp({
       if (currentUser.value && fbDb) {
         await syncWorkoutToFirestore(cloned);
       }
+
+      // 觸發視覺高亮回饋
+      copiedWorkoutId.value = workout.id;
+      setTimeout(() => {
+        copiedWorkoutId.value = null;
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      }, 2500);
+
       selectedDate.value = cleanDate;
       saveLocalData();
-      notify(`📋 已將「${workout.name}」複製到 ${formatDateDisplay(cleanDate)}！`);
+      isSingleCopyModalOpen.value = false;
+      notify(`📋 成功將「${workout.name}」複製到 ${formatDateDisplay(cleanDate)}！`);
       triggerConfetti();
       nextTick(() => {
         renderCharts();
         if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
       });
+    };
+
+    // 單筆運動卡片複製到其他天 (快捷開啟彈窗)
+    const copySingleWorkout = (workout) => {
+      openSingleCopyModal(workout);
     };
 
     // 刪除運動
@@ -2010,6 +2072,17 @@ createApp({
       confirmCopyWorkouts,
       quickCopyPreviousDay,
       copySingleWorkout,
+      copiedWorkoutId,
+      isConfirmingCopy,
+      isQuickCopying,
+      isCopyingSet,
+      highlightedSetIdx,
+      isSingleCopyModalOpen,
+      singleCopyWorkout,
+      singleCopyTargetDate,
+      openSingleCopyModal,
+      setSingleCopyTargetDatePreset,
+      confirmSingleCopyWorkout,
       toastMessage,
       showToast,
       calendarMonth,

@@ -67,9 +67,9 @@
   <meta property="og:type" content="website">
 
   <!-- Local Firebase Config -->
-  <script src="firebase-config.js?v=11.0"></script>
+  <script src="firebase-config.js?v=12.0"></script>
   
-  <link rel="stylesheet" href="styles.css?v=11.0">
+  <link rel="stylesheet" href="styles.css?v=12.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white pb-24 md:pb-12">
 
@@ -358,10 +358,11 @@
             </button>
             <button 
               @click="quickCopyPreviousDay()" 
-              class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold transition-colors"
+              :class="isQuickCopying ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/60 shadow-lg shadow-emerald-600/40 animate-copy-pop' : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200'"
+              class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all"
             >
-              <i data-lucide="copy" class="w-4 h-4 text-indigo-400"></i>
-              <span>複製前一天記錄</span>
+              <i :data-lucide="isQuickCopying ? 'check-circle-2' : 'copy'" class="w-4 h-4 text-emerald-400"></i>
+              <span>{{ isQuickCopying ? '✓ 已成功複製課表！' : '複製前一天記錄' }}</span>
             </button>
           </div>
         </div>
@@ -390,13 +391,15 @@
                 {{ workout.time || '未指定時間' }}
               </span>
 
-              <div class="flex items-center gap-1">
+              <div class="flex items-center gap-1.5">
                 <button 
                   @click="copySingleWorkout(workout)" 
-                  class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+                  :class="copiedWorkoutId === workout.id ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 animate-copy-pop' : 'text-slate-400 hover:text-indigo-400 hover:bg-slate-800 border border-transparent'"
+                  class="px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all"
                   title="複製此運動到其他天"
                 >
-                  <i data-lucide="copy" class="w-4 h-4"></i>
+                  <i :data-lucide="copiedWorkoutId === workout.id ? 'check' : 'copy'" class="w-3.5 h-3.5"></i>
+                  <span>{{ copiedWorkoutId === workout.id ? '已複製!' : '複製' }}</span>
                 </button>
                 <button 
                   @click="openEditModal(workout)" 
@@ -955,10 +958,12 @@
                 <button 
                   type="button"
                   @click="copyLastSet" 
-                  class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors"
+                  :class="isCopyingSet ? 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400/50 shadow-md shadow-emerald-600/30 animate-copy-pop' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'"
+                  class="px-2.5 py-1 rounded-lg text-xs transition-all flex items-center gap-1"
                   title="複製最後一組"
                 >
-                  + 複製上一組
+                  <i :data-lucide="isCopyingSet ? 'check' : 'copy'" class="w-3.5 h-3.5"></i>
+                  <span>{{ isCopyingSet ? '已複製上一組！' : '+ 複製上一組' }}</span>
                 </button>
                 <button 
                   type="button"
@@ -975,9 +980,13 @@
               <div 
                 v-for="(set, idx) in form.sets" 
                 :key="idx"
-                class="flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700/60"
+                :class="highlightedSetIdx === idx ? 'animate-highlight-glow ring-2 ring-emerald-400/60 shadow-lg shadow-emerald-500/20' : 'bg-slate-800/70 border-slate-700/60'"
+                class="flex items-center gap-2 p-2 rounded-xl border transition-all"
               >
-                <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0">
+                <span 
+                  :class="highlightedSetIdx === idx ? 'bg-emerald-500 text-white animate-copy-pop' : 'bg-indigo-500/20 text-indigo-300'"
+                  class="w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 transition-colors"
+                >
                   #{{ idx + 1 }}
                 </span>
 
@@ -1452,12 +1461,117 @@
           <button 
             type="button" 
             @click="confirmCopyWorkouts"
-            :disabled="selectedWorkoutIdsToCopy.length === 0"
-            :class="selectedWorkoutIdsToCopy.length === 0 ? 'opacity-50 cursor-not-allowed bg-slate-700 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 active:scale-95'"
-            class="px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+            :disabled="selectedWorkoutIdsToCopy.length === 0 || isConfirmingCopy"
+            :class="[
+              selectedWorkoutIdsToCopy.length === 0 ? 'opacity-50 cursor-not-allowed bg-slate-700 text-slate-400' : 
+              isConfirmingCopy ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 animate-copy-pop shadow-lg shadow-emerald-600/40' : 
+              'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 active:scale-95'
+            ]"
+            class="px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+          >
+            <i :data-lucide="isConfirmingCopy ? 'check-circle-2' : 'copy'" class="w-4 h-4"></i>
+            <span>{{ isConfirmingCopy ? '✓ 成功複製課表！' : '確認複製 (' + selectedWorkoutIdsToCopy.length + ' 項)' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 單筆運動複製彈窗 (SINGLE WORKOUT COPY MODAL) ==================== -->
+    <div 
+      v-if="isSingleCopyModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
+      @click.self="isSingleCopyModalOpen = false"
+    >
+      <div class="glass-card w-full max-w-md rounded-3xl p-6 border border-slate-700/80 shadow-2xl space-y-5 animate-copy-pop">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+              <i data-lucide="copy" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">複製運動項目</h3>
+              <p class="text-xs text-slate-400">將這筆運動快速複製到指定的日期</p>
+            </div>
+          </div>
+          <button 
+            @click="isSingleCopyModalOpen = false" 
+            class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Workout Summary Preview -->
+        <div v-if="singleCopyWorkout" class="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <span :class="getCategoryInfo(singleCopyWorkout.category).badgeClass" class="px-2 py-0.5 rounded text-[11px] font-semibold">
+              {{ getCategoryInfo(singleCopyWorkout.category).name }}
+            </span>
+            <span class="font-bold text-white text-sm">{{ singleCopyWorkout.name }}</span>
+          </div>
+          <span class="text-xs text-indigo-300 font-medium">
+            {{ singleCopyWorkout.duration ? singleCopyWorkout.duration + ' 分鐘' : '' }}
+          </span>
+        </div>
+
+        <!-- Target Date Selection -->
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-slate-300">選擇要複製到的目標日期：</label>
+          
+          <!-- Quick Preset Chips -->
+          <div class="grid grid-cols-3 gap-2">
+            <button 
+              type="button" 
+              @click="setSingleCopyTargetDatePreset(0)"
+              :class="singleCopyTargetDate === getTodayString() ? 'bg-indigo-600 text-white font-bold ring-1 ring-indigo-400' : 'bg-slate-900/80 text-slate-300 border-slate-700/80 hover:bg-slate-800'"
+              class="py-2 rounded-xl text-xs border transition-all text-center"
+            >
+              今天
+            </button>
+            <button 
+              type="button" 
+              @click="setSingleCopyTargetDatePreset(1)"
+              class="py-2 rounded-xl text-xs bg-slate-900/80 text-slate-300 border border-slate-700/80 hover:bg-slate-800 transition-all text-center"
+            >
+              明天
+            </button>
+            <button 
+              type="button" 
+              @click="setSingleCopyTargetDatePreset(-1)"
+              class="py-2 rounded-xl text-xs bg-slate-900/80 text-slate-300 border border-slate-700/80 hover:bg-slate-800 transition-all text-center"
+            >
+              昨天
+            </button>
+          </div>
+
+          <!-- Date Input -->
+          <input 
+            type="date" 
+            v-model="singleCopyTargetDate" 
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-medium"
+          >
+          <div class="text-[11px] text-slate-400 text-right">
+            目標：{{ formatDateDisplay(singleCopyTargetDate) }}
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+          <button 
+            type="button" 
+            @click="isSingleCopyModalOpen = false" 
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold transition-colors"
+          >
+            取消
+          </button>
+          <button 
+            type="button" 
+            @click="confirmSingleCopyWorkout" 
+            class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition-transform active:scale-95"
           >
             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-            <span>確認複製 ({{ selectedWorkoutIdsToCopy.length }} 項)</span>
+            <span>確認複製項目</span>
           </button>
         </div>
       </div>
@@ -1806,6 +1920,6 @@
 
   </div>
 
-  <script src="app.js?v=11.0"></script>
+  <script src="app.js?v=12.0"></script>
 </body>
 </html>
